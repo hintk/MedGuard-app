@@ -3,6 +3,7 @@ import SwiftUI
 struct MedicationCard: View {
     let medication: Medication
     let onDelete: () -> Void
+    let onEdit: () -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -47,10 +48,18 @@ struct MedicationCard: View {
                 
                 Spacer()
                 
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
-                        .foregroundStyle(Theme.Colors.secondaryText)
+                HStack(spacing: Theme.Spacing.sm) {
+                    Button(action: onEdit) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 16, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.Colors.healthBlue)
+                    }
+                    
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 16, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
                 }
             }
         }

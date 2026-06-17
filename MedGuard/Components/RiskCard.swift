@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RiskCard: View {
     let risk: RiskInfo
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -39,7 +40,7 @@ struct RiskCard: View {
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(risk.level.bgColor)
+        .background(risk.level.bgColor(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
         .cardShadow(Theme.Shadow.card)
     }

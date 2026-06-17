@@ -1,6 +1,6 @@
 import Foundation
 
-struct Medication: Identifiable {
+struct Medication: Identifiable, Codable {
     let id: String
     var name: String
     var category: String
@@ -15,15 +15,11 @@ struct Medication: Identifiable {
     var source: MedicationSource
     
     var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: time)
+        Theme.DateFormats.timeString(from: time)
     }
     
     var dateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd"
-        return formatter.string(from: time)
+        Theme.DateFormats.shortDateString(from: time)
     }
     
     var inventorySummary: String {
@@ -36,9 +32,7 @@ struct Medication: Identifiable {
         guard let runOutDate = Calendar.current.date(byAdding: .day, value: daysLeft, to: Date()) else {
             return "预计日期待计算"
         }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM月dd日"
-        return "预计可用到\(formatter.string(from: runOutDate))"
+        return "预计可用到\(Theme.DateFormats.monthDayString(from: runOutDate))"
     }
     
     var needsRefill: Bool {
@@ -46,21 +40,17 @@ struct Medication: Identifiable {
     }
 }
 
-struct TimelineRecord: Identifiable {
+struct TimelineRecord: Identifiable, Codable {
     let id: String
     let medication: Medication
     let recordDate: Date
     
     var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: medication.time)
+        Theme.DateFormats.timeString(from: medication.time)
     }
     
     var dateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd HH:mm"
-        return formatter.string(from: recordDate)
+        Theme.DateFormats.shortDateTimeString(from: recordDate)
     }
 }
 
@@ -70,13 +60,13 @@ enum TimelineGroup: String, CaseIterable {
     case earlier = "过往服药"
 }
 
-enum MedicationSource: String {
+enum MedicationSource: String, Codable {
     case manual = "手动添加"
     case scanned = "扫描添加"
     case preset = "系统导入"
 }
 
-enum MedicationUnit: String, CaseIterable, Identifiable {
+enum MedicationUnit: String, CaseIterable, Identifiable, Codable {
     case pill = "片"
     case capsule = "粒"
     case sachet = "袋"

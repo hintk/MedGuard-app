@@ -62,13 +62,15 @@ final class NotificationManager: ObservableObject {
         title: String,
         body: String,
         type: NotificationRecord.NotificationType,
-        medicationName: String? = nil
+        medicationName: String? = nil,
+        recipientUserId: String
     ) {
         let record = NotificationRecord(
             type: type,
             title: title,
             body: body,
-            medicationName: medicationName
+            medicationName: medicationName,
+            recipientUserId: recipientUserId
         )
         AuthStore.shared.addNotificationRecord(record)
 

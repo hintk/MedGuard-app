@@ -1,105 +1,80 @@
 import SwiftUI
 
-struct RegisterView: View {
+/// Shown after first-time profile setup if user is elderly, to guide binding.
+/// Kept for backward compatibility — actual setup is now inline in LoginView.
+struct ProfileSetupView: View {
     @EnvironmentObject var authStore: AuthStore
-    @Environment(\.dismiss) private var dismiss
 
-    @State private var phone = ""
-    @State private var password = ""
-    @State private var confirmPassword = ""
     @State private var nickname = ""
     @State private var selectedRole: UserRole = .elderly
     @State private var showBinding = false
-    @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.xl) {
-                headerSection
-                inputSection
-                roleSelectionSection
-                registerButton
+                VStack(spacing: Theme.Spacing.sm) {
+                    ZStack {
+                        Circle()
+                            .fill(Theme.Colors.healthBlue.opacity(0.12))
+                            .frame(width: 72, height: 72)
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 28, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.Colors.healthBlue)
+                    }
+                    Text("完善您的资料")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                }
+
+                VStack(spacing: Theme.Spacing.md) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .frame(width: 24)
+                        TextField("昵称", text: $nickname)
+                    }
+                    .font(Theme.Typography.body)
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
+                            .stroke(Theme.Colors.tertiaryBg, lineWidth: 1)
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    Text("选择角色")
+                        .font(Theme.Typography.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                    HStack(spacing: Theme.Spacing.md) {
+                        ForEach(UserRole.allCases, id: \.self) { role in
+                            roleCard(role)
+                        }
+                    }
+                }
+
+                PrimaryButton("完成", icon: "checkmark") {
+                    let trimmed = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let user = authStore.setupProfile(
+                        nickname: trimmed.isEmpty ? "用户" : trimmed,
+                        role: selectedRole
+                    )
+                    if user.role == .elderly {
+                        showBinding = true
+                    }
+                }
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.top, Theme.Spacing.lg)
         }
         .background(Theme.Colors.background)
-        .navigationTitle("注册")
+        .navigationTitle("完善资料")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden()
         .navigationDestination(isPresented: $showBinding) {
             AccountBindingView()
-        }
-        .alert("注册失败", isPresented: .constant(errorMessage != nil)) {
-            Button("确定") { errorMessage = nil }
-        } message: {
-            if let msg = errorMessage {
-                Text(msg)
-            }
-        }
-    }
-
-    private var headerSection: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            Text("创建账号")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(Theme.Colors.primaryText)
-            Text("填写以下信息完成注册")
-                .font(Theme.Typography.subheadline)
-                .foregroundStyle(Theme.Colors.secondaryText)
-        }
-    }
-
-    private var inputSection: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            inputField(icon: "person.fill", placeholder: "昵称", text: $nickname)
-            inputField(icon: "phone.fill", placeholder: "手机号", text: $phone, keyboardType: .phonePad)
-            inputField(icon: "lock.fill", placeholder: "密码（至少6位）", text: $password, isSecure: true)
-            inputField(icon: "lock.fill", placeholder: "确认密码", text: $confirmPassword, isSecure: true)
-        }
-    }
-
-    private func inputField(
-        icon: String,
-        placeholder: String,
-        text: Binding<String>,
-        keyboardType: UIKeyboardType = .default,
-        isSecure: Bool = false
-    ) -> some View {
-        HStack(spacing: Theme.Spacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Theme.Colors.secondaryText)
-                .frame(width: 24)
-
-            if isSecure {
-                SecureField(placeholder, text: text)
-            } else {
-                TextField(placeholder, text: text)
-                    .keyboardType(keyboardType)
-                    .textContentType(keyboardType == .phonePad ? .telephoneNumber : .none)
-            }
-        }
-        .font(Theme.Typography.body)
-        .padding(Theme.Spacing.md)
-        .background(Theme.Colors.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                .stroke(Theme.Colors.tertiaryBg, lineWidth: 1)
-        )
-    }
-
-    private var roleSelectionSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("选择角色")
-                .font(Theme.Typography.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.Colors.primaryText)
-
-            HStack(spacing: Theme.Spacing.md) {
-                ForEach(UserRole.allCases, id: \.self) { role in
-                    roleCard(role)
-                }
-            }
         }
     }
 
@@ -127,32 +102,11 @@ struct RegisterView: View {
         }
         .buttonStyle(.plain)
     }
-
-    private var registerButton: some View {
-        PrimaryButton("注册", icon: "person.badge.plus") {
-            performRegister()
-        }
-    }
-
-    private func performRegister() {
-        guard password == confirmPassword else {
-            errorMessage = "两次输入的密码不一致"
-            return
-        }
-        do {
-            _ = try authStore.register(phone: phone, password: password, nickname: nickname, role: selectedRole)
-            if selectedRole == .elderly {
-                showBinding = true
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
 }
 
 #Preview {
     NavigationStack {
-        RegisterView()
+        ProfileSetupView()
             .environmentObject(AuthStore.shared)
     }
 }

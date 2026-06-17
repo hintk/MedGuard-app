@@ -1,17 +1,14 @@
 import Foundation
 import SwiftUI
-import CryptoKit
 
 @MainActor
 final class AuthStore: ObservableObject {
     @Published var currentUser: User?
     @Published var isLoggedIn: Bool = false
     @Published var allUsers: [User] = []
-    @Published var bindingRequests: [BindingRequest] = []
     @Published var notificationRecords: [NotificationRecord] = []
 
     private let usersKey = "medguard_users"
-    private let bindingRequestsKey = "medguard_binding_requests"
     private let notificationsKey = "medguard_notification_records"
     private let currentUserKey = "medguard_current_user"
 
@@ -21,28 +18,23 @@ final class AuthStore: ObservableObject {
         loadData()
     }
 
-    // MARK: - Auth Actions
+    var hasProfile: Bool {
+        !allUsers.isEmpty
+    }
 
-    func register(phone: String, password: String, nickname: String, role: UserRole) throws -> User {
-        guard !phone.isEmpty, phone.count >= 11 else {
-            throw AuthError.invalidPhone
-        }
-        guard password.count >= 6 else {
-            throw AuthError.weakPassword
-        }
-        guard !nickname.isEmpty else {
-            throw AuthError.emptyNickname
-        }
-        guard !allUsers.contains(where: { $0.phone == phone }) else {
-            throw AuthError.phoneAlreadyRegistered
-        }
+    // MARK: - Unlock & Setup
 
-        let user = User(
-            phone: phone,
-            passwordHash: hashPassword(password),
-            nickname: nickname,
-            role: role
-        )
+    /// Call after Face ID succeeds to enter the app
+    func unlock() {
+        guard let user = currentUser ?? allUsers.first else { return }
+        currentUser = user
+        isLoggedIn = true
+        saveCurrentUser()
+    }
+
+    /// First-time profile setup
+    func setupProfile(nickname: String, role: UserRole) -> User {
+        let user = User(nickname: nickname, role: role)
         allUsers.append(user)
         saveUsers()
         currentUser = user
@@ -51,21 +43,14 @@ final class AuthStore: ObservableObject {
         return user
     }
 
-    func login(phone: String, password: String) throws -> User {
-        guard !phone.isEmpty else { throw AuthError.emptyField }
-        guard !password.isEmpty else { throw AuthError.emptyField }
-
-        guard let user = allUsers.first(where: { $0.phone == phone }) else {
-            throw AuthError.userNotFound
-        }
-        guard user.passwordHash == hashPassword(password) else {
-            throw AuthError.wrongPassword
-        }
+    func switchToUser(_ user: User) {
         currentUser = user
         isLoggedIn = true
         saveCurrentUser()
-        return user
+        // Continue without Face ID since user explicitly chose
     }
+
+    // MARK: - Session
 
     func logout() {
         currentUser = nil
@@ -76,87 +61,117 @@ final class AuthStore: ObservableObject {
     func deleteAccount() {
         guard let user = currentUser else { return }
 
-        if let otherUserIdx = allUsers.firstIndex(where: { $0.id == user.boundUserId }) {
-            var other = allUsers[otherUserIdx]
+        if let otherIdx = allUsers.firstIndex(where: { $0.id == user.boundUserId }) {
+            var other = allUsers[otherIdx]
             other.boundUserId = nil
             other.boundUserName = nil
-            other.boundUserPhone = nil
-            allUsers[otherUserIdx] = other
+            allUsers[otherIdx] = other
         }
 
         allUsers.removeAll { $0.id == user.id }
-        bindingRequests.removeAll { $0.elderlyId == user.id || $0.childId == user.id }
         notificationRecords.removeAll()
         saveUsers()
-        saveBindingRequests()
+        saveNotificationRecords()
         logout()
     }
 
-    // MARK: - Binding Actions
+    // MARK: - One-Time Binding Code (6-digit, 5-min TTL)
 
-    func sendBindingRequest() -> BindingRequest? {
-        guard let user = currentUser, user.role == .elderly else { return nil }
+    @Published var currentBindingCode: BindingCode?
 
-        let request = BindingRequest(
-            id: UUID().uuidString,
-            elderlyId: user.id,
-            elderlyName: user.nickname,
-            elderlyPhone: user.phone,
-            elderlyInviteCode: user.inviteCode,
-            childId: "",
-            childName: "",
-            childPhone: ""
-        )
-        bindingRequests.append(request)
-        saveBindingRequests()
-        return request
+    struct BindingCode {
+        let code: String
+        let elderlyId: String
+        let expiresAt: Date
+
+        var isValid: Bool { expiresAt > Date() }
+        var timeRemaining: TimeInterval { max(0, expiresAt.timeIntervalSinceNow) }
     }
 
-    func bindByCode(_ code: String, childName: String, childPhone: String) throws {
-        guard let request = bindingRequests.first(where: {
-            $0.elderlyInviteCode.uppercased() == code.uppercased() && $0.childId.isEmpty
-        }) else {
-            throw BindingError.invalidCode
-        }
-
-        guard let elderlyIdx = allUsers.firstIndex(where: { $0.id == request.elderlyId }) else {
-            throw BindingError.elderlyNotFound
-        }
-
-        var elderlyUser = allUsers[elderlyIdx]
-        elderlyUser.boundUserId = currentUser?.id
-        elderlyUser.boundUserName = currentUser?.nickname
-        elderlyUser.boundUserPhone = currentUser?.phone
-        allUsers[elderlyIdx] = elderlyUser
-
-        var childUser = currentUser
-        childUser?.boundUserId = elderlyUser.id
-        childUser?.boundUserName = elderlyUser.nickname
-        childUser?.boundUserPhone = elderlyUser.phone
-
-        if let idx = allUsers.firstIndex(where: { $0.id == childUser?.id }) {
-            allUsers[idx] = childUser!
-        }
-
-        currentUser = childUser
-
-        let newRequest = BindingRequest(
-            id: request.id,
-            elderlyId: request.elderlyId,
-            elderlyName: request.elderlyName,
-            elderlyPhone: request.elderlyPhone,
-            elderlyInviteCode: request.elderlyInviteCode,
-            childId: childUser?.id ?? "",
-            childName: childUser?.nickname ?? "",
-            childPhone: childUser?.phone ?? ""
+    /// Elderly generates a 6-digit code valid for 5 minutes
+    func generateBindingCode() -> BindingCode {
+        let code = String(format: "%06d", Int.random(in: 100000...999999))
+        let bindingCode = BindingCode(
+            code: code,
+            elderlyId: currentUser?.id ?? "",
+            expiresAt: Date().addingTimeInterval(300)
         )
-        if let reqIdx = bindingRequests.firstIndex(where: { $0.id == request.id }) {
-            bindingRequests[reqIdx] = newRequest
+        currentBindingCode = bindingCode
+        // Auto-expire after 5 minutes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 300) { [weak self] in
+            if self?.currentBindingCode?.code == code {
+                self?.currentBindingCode = nil
+            }
         }
+        return bindingCode
+    }
+
+    enum BindError: LocalizedError {
+        case notChildRole
+        case noCode
+        case codeExpired
+        case selfBind
+        case elderlyNotFound
+
+        var errorDescription: String? {
+            switch self {
+            case .notChildRole: return "只有子女账号可以绑定老人"
+            case .noCode: return "绑定码无效"
+            case .codeExpired: return "绑定码已过期（5分钟有效），请让老人重新生成"
+            case .selfBind: return "不能绑定自己的账号"
+            case .elderlyNotFound: return "未找到对应的老人账号"
+            }
+        }
+    }
+
+    /// Child enters the 6-digit code to bind
+    func bindWithCode(_ code: String) throws {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count == 6, trimmed.allSatisfy(\.isNumber) else {
+            throw BindError.noCode
+        }
+
+        guard let childUser = currentUser, childUser.role == .child else {
+            throw BindError.notChildRole
+        }
+
+        guard let bindingCode = currentBindingCode, bindingCode.code == trimmed else {
+            throw BindError.noCode
+        }
+
+        guard bindingCode.isValid else {
+            currentBindingCode = nil
+            throw BindError.codeExpired
+        }
+
+        guard bindingCode.elderlyId != childUser.id else {
+            throw BindError.selfBind
+        }
+
+        guard let elderlyIdx = allUsers.firstIndex(where: { $0.id == bindingCode.elderlyId }) else {
+            throw BindError.elderlyNotFound
+        }
+
+        // Bind elderly
+        var elderly = allUsers[elderlyIdx]
+        elderly.boundUserId = childUser.id
+        elderly.boundUserName = childUser.nickname
+        allUsers[elderlyIdx] = elderly
+
+        // Bind child
+        var child = childUser
+        child.boundUserId = elderly.id
+        child.boundUserName = elderly.nickname
+        if let childIdx = allUsers.firstIndex(where: { $0.id == childUser.id }) {
+            allUsers[childIdx] = child
+        }
+        currentUser = child
+
+        // Delete the code immediately (one-time use)
+        currentBindingCode = nil
 
         saveUsers()
         saveCurrentUser()
-        saveBindingRequests()
     }
 
     func unbind() {
@@ -166,25 +181,20 @@ final class AuthStore: ObservableObject {
             var other = allUsers[boundIdx]
             other.boundUserId = nil
             other.boundUserName = nil
-            other.boundUserPhone = nil
             allUsers[boundIdx] = other
         }
 
-        var updatedUser = user
-        updatedUser.boundUserId = nil
-        updatedUser.boundUserName = nil
-        updatedUser.boundUserPhone = nil
+        var updated = user
+        updated.boundUserId = nil
+        updated.boundUserName = nil
 
-        if let idx = allUsers.firstIndex(where: { $0.id == updatedUser.id }) {
-            allUsers[idx] = updatedUser
+        if let idx = allUsers.firstIndex(where: { $0.id == updated.id }) {
+            allUsers[idx] = updated
         }
-        currentUser = updatedUser
-
-        bindingRequests.removeAll { $0.elderlyId == user.id || $0.childId == user.id }
+        currentUser = updated
 
         saveUsers()
         saveCurrentUser()
-        saveBindingRequests()
     }
 
     // MARK: - Notification Records
@@ -203,6 +213,7 @@ final class AuthStore: ObservableObject {
                 title: record.title,
                 body: record.body,
                 medicationName: record.medicationName,
+                recipientUserId: record.recipientUserId,
                 timestamp: record.timestamp,
                 isRead: true
             )
@@ -212,15 +223,12 @@ final class AuthStore: ObservableObject {
     }
 
     var unreadCount: Int {
-        notificationRecords.filter { !$0.isRead }.count
+        guard let userId = currentUser?.id else { return 0 }
+        return notificationRecords.filter { !$0.isRead && $0.recipientUserId == userId }.count
     }
 
-    // MARK: - Helpers
-
-    private func hashPassword(_ password: String) -> String {
-        let data = Data(password.utf8)
-        let hash = SHA256.hash(data: data)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
+    func notifications(for userId: String) -> [NotificationRecord] {
+        notificationRecords.filter { $0.recipientUserId == userId }
     }
 
     // MARK: - Persistence
@@ -230,32 +238,21 @@ final class AuthStore: ObservableObject {
            let users = try? JSONDecoder().decode([User].self, from: data) {
             allUsers = users
         }
-        if let data = UserDefaults.standard.data(forKey: bindingRequestsKey),
-           let requests = try? JSONDecoder().decode([BindingRequest].self, from: data) {
-            bindingRequests = requests
-        }
         if let data = UserDefaults.standard.data(forKey: notificationsKey),
            let records = try? JSONDecoder().decode([NotificationRecord].self, from: data) {
             notificationRecords = records
         }
+        // Load saved user but don't auto-login — Face ID required
         if let data = UserDefaults.standard.data(forKey: currentUserKey),
-           let user = try? JSONDecoder().decode(User.self, from: data) {
-            if allUsers.contains(where: { $0.id == user.id }) {
-                currentUser = user
-                isLoggedIn = true
-            }
+           let user = try? JSONDecoder().decode(User.self, from: data),
+           allUsers.contains(where: { $0.id == user.id }) {
+            currentUser = user
         }
     }
 
     private func saveUsers() {
         if let data = try? JSONEncoder().encode(allUsers) {
             UserDefaults.standard.set(data, forKey: usersKey)
-        }
-    }
-
-    private func saveBindingRequests() {
-        if let data = try? JSONEncoder().encode(bindingRequests) {
-            UserDefaults.standard.set(data, forKey: bindingRequestsKey)
         }
     }
 
@@ -274,36 +271,16 @@ final class AuthStore: ObservableObject {
 
 // MARK: - Errors
 
-enum AuthError: LocalizedError {
-    case invalidPhone
-    case weakPassword
-    case emptyNickname
-    case emptyField
-    case phoneAlreadyRegistered
-    case userNotFound
-    case wrongPassword
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidPhone: return "请输入正确的手机号（至少11位）"
-        case .weakPassword: return "密码至少需要6位"
-        case .emptyNickname: return "请输入昵称"
-        case .emptyField: return "请填写所有字段"
-        case .phoneAlreadyRegistered: return "该手机号已注册"
-        case .userNotFound: return "用户不存在"
-        case .wrongPassword: return "密码错误"
-        }
-    }
-}
-
 enum BindingError: LocalizedError {
     case invalidCode
     case elderlyNotFound
+    case notChildRole
 
     var errorDescription: String? {
         switch self {
         case .invalidCode: return "邀请码无效或已被使用"
         case .elderlyNotFound: return "未找到对应老人账号"
+        case .notChildRole: return "只有子女账号可以绑定老人"
         }
     }
 }

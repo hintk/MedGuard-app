@@ -1,74 +1,55 @@
 import SwiftUI
-import AVFoundation
-import AVFoundation
+import UIKit
 
 struct ScanView: View {
     @EnvironmentObject private var medicationStore: MedicationStore
-    @State private var showScanner = false
+    @State private var showCamera = false
     @State private var showManualAdd = false
-    @State private var scannedCode: String?
-    @State private var showScanResult = false
-    @State private var scannerError: ScannerError?
-
-    // For macOS simulator testing
-    #if targetEnvironment(simulator)
-    @State private var showSimulatorScan = false
-    #endif
+    @State private var capturedImageData: Data?
+    @State private var showResult = false
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.Colors.background
-                    .ignoresSafeArea()
+                Theme.Colors.background.ignoresSafeArea()
 
                 VStack(spacing: Theme.Spacing.xl) {
                     Spacer()
 
-                    // Scan frame with corner accents
-                    ScanFrame()
-                        .padding(.bottom, Theme.Spacing.lg)
+                    ZStack {
+                        Circle()
+                            .fill(Theme.Colors.healthBlue.opacity(0.10))
+                            .frame(width: 120, height: 120)
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 48, design: .rounded))
+                            .foregroundStyle(Theme.Colors.healthBlue)
+                    }
 
-                    #if targetEnvironment(simulator)
-                    // macOS simulator: use simulated scan for testing
-                    PrimaryButton("模拟扫描（测试用）", icon: "cpu", style: .primary) {
-                        simulateScan()
+                    VStack(spacing: Theme.Spacing.sm) {
+                        Text("拍照识别药品")
+                            .font(Theme.Typography.title2)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        Text("拍下药盒照片，AI 自动识别药品信息")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+
+                    PrimaryButton("拍照识别", icon: "camera.fill", style: .primary) {
+                        showCamera = true
                     }
                     .padding(.horizontal, Theme.Spacing.xl)
 
-                    PrimaryButton("手动添加药品", icon: "plus.circle.fill", style: .secondary) {
+                    PrimaryButton("手动输入", icon: "square.and.pencil", style: .secondary) {
                         showManualAdd = true
                     }
                     .padding(.horizontal, Theme.Spacing.xl)
-                    #else
-                    PrimaryButton("扫描药盒", icon: "camera.fill", style: .primary) {
-                        showScanner = true
-                    }
-                    .padding(.horizontal, Theme.Spacing.xl)
-
-                    PrimaryButton("手动添加药品", icon: "plus.circle.fill", style: .secondary) {
-                        showManualAdd = true
-                    }
-                    .padding(.horizontal, Theme.Spacing.xl)
-                    #endif
-
-                    if let scannedCode {
-                        ScanResultBanner(scannedCode: scannedCode) {
-                            showScanResult = true
-                        }
-                        .padding(.horizontal, Theme.Spacing.md)
-                    }
 
                     Spacer()
 
-                    VStack(spacing: Theme.Spacing.xs) {
-                        Text("扫完可直接加入档案，不用重复录入")
-                            .font(Theme.Typography.footnote)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                        Text("导入时可选择片、粒、袋等计量单位")
-                            .font(Theme.Typography.footnote)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
-                    .padding(.bottom, Theme.Spacing.xl)
+                    Text("支持国产药品和进口药品包装盒识别")
+                        .font(Theme.Typography.footnote)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(.bottom, Theme.Spacing.xl)
                 }
             }
             .navigationTitle("扫描")
@@ -77,425 +58,507 @@ struct ScanView: View {
                 MedicationEntrySheet(entryMode: .manual)
                     .environmentObject(medicationStore)
             }
-            .sheet(isPresented: $showScanner) {
-                ScannerView(scannedCode: $scannedCode, scannerError: $scannerError)
+            .sheet(isPresented: $showCamera) {
+                CameraView(capturedImageData: $capturedImageData)
             }
-            .sheet(isPresented: $showScanResult) {
-                if let scannedCode {
-                    MedicationEntrySheet(entryMode: .scanned(code: scannedCode))
-                        .environmentObject(medicationStore)
+            .onChange(of: capturedImageData) { newValue in
+                showResult = newValue != nil
+            }
+            .sheet(isPresented: $showResult) {
+                if let data = capturedImageData {
+                    AIDrugResultView(
+                        imageData: data,
+                        onSave: { medication in
+                            medicationStore.addMedication(medication)
+                            capturedImageData = nil
+                            showResult = false
+                        },
+                        onDismiss: {
+                            capturedImageData = nil
+                            showResult = false
+                        }
+                    )
+                    .environmentObject(medicationStore)
                 }
             }
-            .alert("无法启动相机", isPresented: scannerErrorBinding) {
-                Button("知道了") { scannerError = nil }
-            } message: {
-                Text(scannerError?.message ?? "请稍后重试")
+        }
+    }
+}
+
+// MARK: - Camera View
+
+struct CameraView: UIViewControllerRepresentable {
+    @Binding var capturedImageData: Data?
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        picker.cameraCaptureMode = .photo
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraView
+        init(_ parent: CameraView) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage,
+               let data = image.jpegData(compressionQuality: 0.7) {
+                parent.capturedImageData = data
+            }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
+    }
+}
+
+// MARK: - AI Recognition Result View (4-Step Flow)
+
+struct AIDrugResultView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var medicationStore: MedicationStore
+
+    let imageData: Data
+    let onSave: (Medication) -> Void
+    let onDismiss: () -> Void
+
+    @State private var recognitionResult: DoubaoService.DrugRecognitionResult?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+    @State private var rawResponse = ""
+    @State private var showRawResponse = false
+    @State private var currentStep = 0
+    let totalSteps = 4
+
+    @State private var name = ""
+    @State private var category = ""
+    @State private var manufacturer = ""
+    @State private var specification = ""
+    @State private var doseAmount = ""
+    @State private var remainingAmount = ""
+    @State private var packageCount = ""
+    @State private var amountPerPackage = ""
+    @State private var selectedUnit: MedicationUnit = .pill
+    @State private var selectedTime = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
+
+    // Animation states
+    @State private var showCheckmark = false
+    @State private var flyAnimation = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if isLoading {
+                    loadingView
+                } else if recognitionResult != nil || errorMessage != nil {
+                    progressBar
+                    if flyAnimation {
+                        flyEffectView
+                    } else {
+                        TabView(selection: $currentStep) {
+                            step1AIResult.tag(0)
+                            step2Confirm.tag(1)
+                            step3Reminder.tag(2)
+                            step4Inventory.tag(3)
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                    }
+                }
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle(stepTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { onDismiss() }
+                }
+            }
+            .task { await doRecognition() }
+        }
+    }
+
+    private var stepTitle: String {
+        ["识别结果", "确认信息", "提醒设置", "库存设置"][currentStep]
+    }
+
+    // MARK: - Progress Bar
+
+    private var progressBar: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                ForEach(0..<totalSteps, id: \.self) { step in
+                    Capsule()
+                        .fill(step <= currentStep ? Theme.Colors.healthBlue : Theme.Colors.tertiaryBg)
+                        .frame(height: 4)
+                        .animation(.easeInOut(duration: 0.3), value: currentStep)
+                }
+            }
+            Text("\(currentStep + 1)/\(totalSteps)")
+                .font(Theme.Typography.caption1).foregroundStyle(Theme.Colors.secondaryText)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Loading
+
+    private var loadingView: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            if let image = UIImage(data: imageData) {
+                Image(uiImage: image)
+                    .resizable().scaledToFit().frame(maxHeight: 180).clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+            }
+            Spacer()
+            ProgressView().scaleEffect(1.5)
+            Text("AI 正在识别药品信息...")
+                .font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Recognition
+
+    private func doRecognition() async {
+        do {
+            let (result, raw) = try await DoubaoService.shared.recognizeDrug(imageData: imageData)
+            await MainActor.run {
+                rawResponse = raw; recognitionResult = result
+                name = result.name; category = result.category
+                manufacturer = result.manufacturer; specification = result.specification
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                rawResponse = "=== 错误响应 ===\n\(error.localizedDescription)"
+                errorMessage = error.localizedDescription; isLoading = false
             }
         }
     }
 
-    private var scannerErrorBinding: Binding<Bool> {
-        Binding(
-            get: { scannerError != nil },
-            set: { if !$0 { scannerError = nil } }
-        )
+    // MARK: - Step 1: AI Result
+
+    private var step1AIResult: some View {
+        ScrollView {
+            VStack(spacing: Theme.Spacing.md) {
+                if let image = UIImage(data: imageData) {
+                    Image(uiImage: image).resizable().scaledToFit()
+                        .frame(maxHeight: 160).clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+                }
+                if let result = recognitionResult {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 20)).foregroundStyle(Theme.Colors.success)
+                            Text("AI 识别结果").font(Theme.Typography.headline)
+                            Spacer()
+                        }
+                        Divider()
+                        stepRow("药品名称", value: $name)
+                        stepRow("分类", value: $category)
+                        stepRow("厂商", value: $manufacturer)
+                        stepRow("规格", value: $specification)
+                    }
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+
+                    rawResponseToggle
+                }
+                if errorMessage != nil {
+                    errorCard
+                }
+
+                stepButtons(nextLabel: "确认,下一步", onNext: { currentStep = 1 },
+                           skipLabel: "跳过,手动填写", onSkip: { onDismiss() })
+                .padding(.top, Theme.Spacing.sm)
+            }
+            .padding(Theme.Spacing.md)
+        }
     }
 
-    #if targetEnvironment(simulator)
-    private func simulateScan() {
-        // Generate a fake drug barcode for testing on macOS simulator
-        let fakeCodes = [
-            "6901028001938",  // Common format: Chinese drug barcode
-            "9780201379624",  // ISBN-style
-            "MED123456789ABC"  // Custom format
-        ]
-        let randomCode = fakeCodes.randomElement() ?? fakeCodes[0]
-        scannedCode = randomCode
-        showScanResult = true
-        Theme.Haptics.success()
+    // MARK: - Step 2: Confirm + Animation
+
+    private var step2Confirm: some View {
+        VStack(spacing: Theme.Spacing.xl) {
+            Spacer()
+
+            VStack(spacing: Theme.Spacing.md) {
+                Image(systemName: showCheckmark ? "checkmark.circle.fill" : "doc.text.magnifyingglass")
+                    .font(.system(size: 64))
+                    .foregroundStyle(showCheckmark ? Theme.Colors.success : Theme.Colors.healthBlue)
+                    .scaleEffect(showCheckmark ? 1.2 : 1.0)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.5), value: showCheckmark)
+
+                VStack(spacing: Theme.Spacing.xs) {
+                    Text(showCheckmark ? "信息已确认 ✓" : "确认药品信息")
+                        .font(Theme.Typography.title2).foregroundStyle(Theme.Colors.primaryText)
+                    Text(showCheckmark ? "正在保存到药品档案..." : "药品名称、分类、厂商、规格已由 AI 识别")
+                        .font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                }
+
+                if !showCheckmark {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        confirmRow("名称", value: name)
+                        confirmRow("分类", value: category)
+                        confirmRow("规格", value: specification)
+                    }
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+                    .padding(.horizontal, Theme.Spacing.xl)
+                }
+            }
+
+            Spacer()
+
+            if showCheckmark {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .tint(Theme.Colors.success)
+            }
+
+            stepButtons(
+                nextLabel: "✓ 确认", onNext: { animateAndGo() },
+                skipLabel: "跳过", onSkip: { currentStep = 2 }
+            )
+        }
+        .padding(Theme.Spacing.md)
     }
-    #endif
-}
 
-// MARK: - Scan Frame
+    private func animateAndGo() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.5)) { showCheckmark = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            withAnimation(.easeInOut(duration: 0.3)) { flyAnimation = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                flyAnimation = false
+                showCheckmark = false
+                currentStep = 2
+            }
+        }
+    }
 
-struct ScanFrame: View {
-    var body: some View {
-        ZStack {
-            // Corner accents
-            VStack {
+    private var flyEffectView: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Spacer()
+            Text("✓")
+                .font(.system(size: 80, weight: .bold))
+                .foregroundStyle(Theme.Colors.success)
+                .scaleEffect(1.5)
+                .opacity(0)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.scale(scale: 0.1).combined(with: .opacity))
+    }
+
+    // MARK: - Step 3: Reminder
+
+    private var step3Reminder: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer()
+            VStack(spacing: Theme.Spacing.md) {
+                Image(systemName: "bell.badge.fill")
+                    .font(.system(size: 48)).foregroundStyle(Theme.Colors.healthBlue)
+                Text("设置提醒").font(Theme.Typography.title2)
+            }
+
+            VStack(spacing: Theme.Spacing.md) {
                 HStack {
-                    CornerAccent()
+                    Text("计量单位").font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
                     Spacer()
-                    CornerAccent()
-                        .rotationEffect(.degrees(90))
+                    Picker("", selection: $selectedUnit) {
+                        ForEach(MedicationUnit.allCases) { unit in Text(unit.rawValue).tag(unit) }
+                    }
                 }
-                Spacer()
+                .padding(Theme.Spacing.md)
+                .background(Theme.Colors.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+
                 HStack {
-                    CornerAccent()
-                        .rotationEffect(.degrees(-90))
+                    Text("提醒时间").font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
                     Spacer()
-                    CornerAccent()
-                        .rotationEffect(.degrees(180))
+                    DatePicker("", selection: $selectedTime, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
                 }
+                .padding(Theme.Spacing.md)
+                .background(Theme.Colors.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
             }
-            .frame(width: 260, height: 260)
+            .padding(.horizontal, Theme.Spacing.lg)
 
-            // Center icon
-            Image(systemName: "barcode.viewfinder")
-                .font(.system(size: 64, design: .rounded))
-                .foregroundStyle(Theme.Colors.healthBlue.opacity(0.4))
+            Spacer()
+
+            stepButtons(nextLabel: "下一步", onNext: { currentStep = 3 },
+                       skipLabel: "跳过", onSkip: { currentStep = 3 })
         }
+        .padding(Theme.Spacing.md)
     }
-}
 
-struct CornerAccent: View {
-    var body: some View {
-        Path { path in
-            path.move(to: CGPoint(x: 0, y: 20))
-            path.addLine(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: 20, y: 0))
-        }
-        .stroke(Theme.Colors.healthBlue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-        .frame(width: 20, height: 20)
-    }
-}
+    // MARK: - Step 4: Inventory
 
-// MARK: - Quick Add Button
+    private var step4Inventory: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer()
+            VStack(spacing: Theme.Spacing.md) {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 48)).foregroundStyle(Theme.Colors.healthBlue)
+                Text("库存设置").font(Theme.Typography.title2)
+                Text("填写实际数量，留空则默认为 0")
+                    .font(Theme.Typography.caption1).foregroundStyle(Theme.Colors.secondaryText)
+            }
 
-struct QuickAddButton: View {
-    let icon: String
-    let title: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Theme.Spacing.md) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(Theme.Colors.healthBlue)
-                    .frame(width: 32)
-
-                Text(title)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Theme.Colors.secondaryText)
+            VStack(spacing: Theme.Spacing.sm) {
+                HStack {
+                    Text("每次用量").font(Theme.Typography.subheadline); Spacer()
+                    TextField("填写", text: $doseAmount).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 100)
+                }
+                Divider()
+                HStack {
+                    Text("当前剩余").font(Theme.Typography.subheadline); Spacer()
+                    TextField("填写", text: $remainingAmount).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 100)
+                }
+                Divider()
+                HStack {
+                    Text("盒数").font(Theme.Typography.subheadline); Spacer()
+                    TextField("填写", text: $packageCount).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 100)
+                }
+                Divider()
+                HStack {
+                    Text("每盒数量").font(Theme.Typography.subheadline); Spacer()
+                    TextField("填写", text: $amountPerPackage).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 100)
+                }
             }
             .padding(Theme.Spacing.md)
             .background(Theme.Colors.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-        }
-        .buttonStyle(.plain)
-    }
-}
+            .padding(.horizontal, Theme.Spacing.lg)
 
-// MARK: - Scan Result Banner
+            Spacer()
 
-struct ScanResultBanner: View {
-    let scannedCode: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Theme.Spacing.md) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 22, design: .rounded))
-                    .foregroundColor(Theme.Colors.success)
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("已识别药盒编码")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.primaryText)
-                    Text(scannedCode)
-                        .font(Theme.Typography.caption1)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Theme.Colors.secondaryText)
-            }
-            .padding(Theme.Spacing.md)
-            .background(Theme.Colors.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-            .cardShadow(Theme.Shadow.card)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Scanner View
-
-struct ScannerView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var scannedCode: String?
-    @Binding var scannerError: ScannerError?
-    @State private var didFinishScanning = false
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            CameraScannerRepresentable { result in
-                guard !didFinishScanning else { return }
-                didFinishScanning = true
-                scannedCode = result
-                dismiss()
-            } onFailure: { error in
-                scannerError = error
-                dismiss()
-            }
-            .ignoresSafeArea()
-
-            // Frosted glass overlay
-            VStack(spacing: Theme.Spacing.lg) {
-                Text("将条形码或二维码放入框内")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(.white)
-                    .padding(.top, Theme.Spacing.xxl)
-
-                Spacer()
-
-                ScannerOverlayFrame()
-                    .frame(width: 260, height: 260)
-
-                Spacer()
-
-                Button {
-                    dismiss()
-                } label: {
-                    Text("取消")
-                        .font(Theme.Typography.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-                }
+            PrimaryButton("添加到药品档案 ✓", icon: "plus.circle.fill") { saveMedication() }
                 .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.bottom, Theme.Spacing.xl)
-            }
-            .background(
-                Color.black.opacity(0.45)
-                    .ignoresSafeArea()
-            )
+            Button("跳过") { saveMedication() }
+                .font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
+        }
+        .padding(Theme.Spacing.md)
+    }
+
+    // MARK: - Shared Components
+
+    private func stepButtons(nextLabel: String, onNext: @escaping () -> Void, skipLabel: String, onSkip: @escaping () -> Void) -> some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            PrimaryButton(nextLabel, icon: "arrow.right") { onNext() }
+                .padding(.horizontal, Theme.Spacing.lg)
+            Button(skipLabel) { onSkip() }
+                .font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
         }
     }
-}
 
-// MARK: - Scanner Overlay Frame
+    private func stepRow(_ label: String, value: Binding<String>) -> some View {
+        HStack {
+            Text(label).font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
+            Spacer()
+            TextField("", text: value).multilineTextAlignment(.trailing)
+                .font(Theme.Typography.subheadline.weight(.medium))
+        }
+    }
 
-struct ScannerOverlayFrame: View {
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.extraLarge)
-                .stroke(Color.white.opacity(0.35), lineWidth: 2)
+    private func confirmRow(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label).font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
+            Spacer()
+            Text(value).font(Theme.Typography.subheadline.weight(.semibold)).foregroundStyle(Theme.Colors.primaryText)
+        }
+    }
 
-            VStack {
+    private var rawResponseToggle: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            Button { withAnimation { showRawResponse.toggle() } } label: {
                 HStack {
-                    CameraCornerAccent()
+                    Image(systemName: showRawResponse ? "chevron.down" : "chevron.right").font(.system(size: 12))
+                    Text("查看豆包原始返回").font(Theme.Typography.subheadline)
                     Spacer()
-                    CameraCornerAccent()
-                        .rotationEffect(.degrees(90))
-                }
-                Spacer()
+                }.foregroundStyle(Theme.Colors.healthBlue)
+            }
+            if showRawResponse && !rawResponse.isEmpty {
+                Text(rawResponse).font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.Colors.tertiaryText).textSelection(.enabled)
+                    .padding(Theme.Spacing.sm).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.Colors.tertiaryBg).clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.small))
+            }
+        }
+        .padding(Theme.Spacing.sm).background(Theme.Colors.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+    }
+
+    private var errorCard: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                 HStack {
-                    CameraCornerAccent()
-                        .rotationEffect(.degrees(-90))
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 24)).foregroundStyle(Theme.Colors.danger)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("❌ 识别失败").font(Theme.Typography.headline)
+                        Text("请检查网络或重试").font(Theme.Typography.caption1).foregroundStyle(Theme.Colors.secondaryText)
+                    }
                     Spacer()
-                    CameraCornerAccent()
-                        .rotationEffect(.degrees(180))
                 }
+                Divider()
+                Text(errorMessage ?? "未知错误")
+                    .font(Theme.Typography.footnote).foregroundStyle(Theme.Colors.danger)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .padding(Theme.Spacing.sm).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.Colors.danger.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.small))
             }
-            .padding(Theme.Spacing.sm)
-        }
-    }
-}
+            .padding(Theme.Spacing.md).background(Theme.Colors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
 
-struct CameraCornerAccent: View {
-    var body: some View {
-        Path { path in
-            path.move(to: CGPoint(x: 0, y: 24))
-            path.addLine(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: 24, y: 0))
-        }
-        .stroke(Theme.Colors.healthBlue, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-        .frame(width: 24, height: 24)
-    }
-}
-
-// MARK: - Camera Scanner Representable
-
-struct CameraScannerRepresentable: UIViewControllerRepresentable {
-    let onScan: (String) -> Void
-    let onFailure: (ScannerError) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onScan: onScan, onFailure: onFailure)
-    }
-
-    func makeUIViewController(context: Context) -> ScannerViewController {
-        let controller = ScannerViewController()
-        controller.delegate = context.coordinator
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {}
-
-    final class Coordinator: NSObject, ScannerViewControllerDelegate {
-        private let onScan: (String) -> Void
-        private let onFailure: (ScannerError) -> Void
-        private var hasCompleted = false
-
-        init(onScan: @escaping (String) -> Void, onFailure: @escaping (ScannerError) -> Void) {
-            self.onScan = onScan
-            self.onFailure = onFailure
-        }
-
-        func scannerViewController(_ controller: ScannerViewController, didScan code: String) {
-            guard !hasCompleted else { return }
-            hasCompleted = true
-            Theme.Haptics.success()
-            onScan(code)
-        }
-
-        func scannerViewController(_ controller: ScannerViewController, didFailWith error: ScannerError) {
-            guard !hasCompleted else { return }
-            hasCompleted = true
-            onFailure(error)
-        }
-    }
-}
-
-// MARK: - Scanner View Controller Delegate
-
-protocol ScannerViewControllerDelegate: AnyObject {
-    func scannerViewController(_ controller: ScannerViewController, didScan code: String)
-    func scannerViewController(_ controller: ScannerViewController, didFailWith error: ScannerError)
-}
-
-// MARK: - Scanner View Controller
-
-final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
-    weak var delegate: ScannerViewControllerDelegate?
-
-    private let captureSession = AVCaptureSession()
-    private var previewLayer: AVCaptureVideoPreviewLayer?
-    private var didReportResult = false
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .black
-        configureSession()
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        if !captureSession.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                self?.captureSession.startRunning()
-            }
-        }
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        if captureSession.isRunning {
-            captureSession.stopRunning()
-        }
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
-    }
-
-    private func configureSession() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            setupCaptureSession()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    if granted { self.setupCaptureSession() }
-                    else { self.reportFailure(.permissionDenied) }
+            HStack(spacing: Theme.Spacing.md) {
+                PrimaryButton("重试", icon: "arrow.clockwise") {
+                    isLoading = true; errorMessage = nil; rawResponse = ""
+                    Task { await doRecognition() }
                 }
+                PrimaryButton("手动填写", icon: "square.and.pencil", style: .secondary) { onDismiss() }
             }
-        case .denied, .restricted:
-            reportFailure(.permissionDenied)
-        @unknown default:
-            reportFailure(.unavailable)
         }
     }
 
-    private func setupCaptureSession() {
-        guard let videoDevice = AVCaptureDevice.default(for: .video) else {
-            reportFailure(.unavailable)
-            return
-        }
-
-        do {
-            let videoInput = try AVCaptureDeviceInput(device: videoDevice)
-
-            guard captureSession.canAddInput(videoInput) else {
-                reportFailure(.configurationFailed)
-                return
-            }
-            captureSession.addInput(videoInput)
-
-            let metadataOutput = AVCaptureMetadataOutput()
-            guard captureSession.canAddOutput(metadataOutput) else {
-                reportFailure(.configurationFailed)
-                return
-            }
-            captureSession.addOutput(metadataOutput)
-            metadataOutput.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
-            metadataOutput.metadataObjectTypes = [.ean8, .ean13, .qr, .code128, .code39, .code93, .upce, .pdf417]
-
-            let previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-            previewLayer.videoGravity = .resizeAspectFill
-            previewLayer.frame = view.bounds
-            view.layer.insertSublayer(previewLayer, at: 0)
-            self.previewLayer = previewLayer
-        } catch {
-            reportFailure(.configurationFailed)
-        }
-    }
-
-    func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-        guard !didReportResult,
-              let metadataObject = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-              let code = metadataObject.stringValue else { return }
-        didReportResult = true
-        delegate?.scannerViewController(self, didScan: code)
-    }
-
-    private func reportFailure(_ error: ScannerError) {
-        guard !didReportResult else { return }
-        didReportResult = true
-        delegate?.scannerViewController(self, didFailWith: error)
+    private func saveMedication() {
+        let dose = max(Int(doseAmount) ?? 0, 0)
+        let remaining = max(Int(remainingAmount) ?? 0, 0)
+        let packages = max(Int(packageCount) ?? 0, 0)
+        let perPackage = max(Int(amountPerPackage) ?? 0, 0)
+        let medication = Medication(
+            id: UUID().uuidString,
+            name: name,
+            category: (category == "未知" || category.isEmpty) ? Theme.Strings.uncategorized : category,
+            dosage: "\(dose)\(selectedUnit.rawValue)",
+            time: selectedTime,
+            status: .pending,
+            doseAmount: dose,
+            doseUnit: selectedUnit,
+            remainingAmount: remaining,
+            packageCount: packages,
+            amountPerPackage: perPackage,
+            source: .scanned
+        )
+        onSave(medication)
+        dismiss()
     }
 }
 
-// MARK: - Scanner Error
-
-enum ScannerError: Error {
-    case permissionDenied
-    case unavailable
-    case configurationFailed
-
-    var message: String {
-        switch self {
-        case .permissionDenied:    return "请在系统设置中允许相机权限后再试。"
-        case .unavailable:         return "当前设备无法使用相机扫描。"
-        case .configurationFailed: return "扫描器初始化失败，请稍后重试。"
-        }
-    }
+#Preview {
+    ScanView().environmentObject(MedicationStore())
 }

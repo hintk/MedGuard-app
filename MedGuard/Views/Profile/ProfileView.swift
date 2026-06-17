@@ -7,6 +7,12 @@ struct ProfileView: View {
     @State private var showBindingSheet = false
     @State private var showUnbindAlert = false
     @State private var showLogoutAlert = false
+    @State private var showDeleteAccountAlert = false
+    @State private var showExportSheet = false
+    @State private var exportData: URL?
+    @State private var exportFileName: String = ""
+    @State private var showExportError = false
+    @State private var exportErrorMessage = ""
 
     var body: some View {
         NavigationStack {
@@ -21,8 +27,9 @@ struct ProfileView: View {
                         } else {
                             boundElderlyCard(user: user)
                         }
-                        notificationRecordsSection
-                        dangerZone
+                    notificationRecordsSection
+                    dataManagementSection
+                    dangerZone
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -35,19 +42,27 @@ struct ProfileView: View {
                 AccountBindingView()
             }
             .alert("确认解除绑定？", isPresented: $showUnbindAlert) {
-                Button("解除绑定", role: .destructive) {
-                    authStore.unbind()
-                }
+                Button("解除绑定", role: .destructive) { authStore.unbind() }
                 Button("取消", role: .cancel) {}
             } message: {
                 Text("解除绑定后，双方将不再收到用药提醒通知。")
             }
             .alert("确认退出登录？", isPresented: $showLogoutAlert) {
-                Button("退出登录", role: .destructive) {
-                    authStore.logout()
-                }
+                Button("退出登录", role: .destructive) { authStore.logout() }
                 Button("取消", role: .cancel) {}
             }
+            .alert("确认删除账号？", isPresented: $showDeleteAccountAlert) {
+                Button("删除账号", role: .destructive) { authStore.deleteAccount() }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("删除后所有数据将被清除，且无法恢复。")
+            }
+            .sheet(isPresented: $showExportSheet) {
+                if let url = exportData { ShareSheet(activityItems: [url]) }
+            }
+            .alert("导出失败", isPresented: $showExportError) {
+                Button("确定", role: .cancel) {}
+            } message: { Text(exportErrorMessage) }
         }
     }
 
@@ -88,30 +103,26 @@ struct ProfileView: View {
 
     private func userInfoCard(user: User) -> some View {
         VStack(spacing: 0) {
-            infoRow(icon: "phone.fill", label: "手机号", value: formatPhone(user.phone))
+            HStack(spacing: Theme.Spacing.md) {
+                Image(systemName: "person.fill").font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.Colors.secondaryText).frame(width: 24)
+                Text("昵称").font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
+                Spacer()
+                Text(user.nickname).font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.primaryText)
+            }
+            .padding(.horizontal, Theme.Spacing.md).padding(.vertical, Theme.Spacing.md)
             Divider().padding(.leading, 44)
-            infoRow(icon: "person.fill.badge.plus", label: "邀请码", value: user.inviteCode)
+            HStack(spacing: Theme.Spacing.md) {
+                Image(systemName: "person.circle.fill").font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.Colors.secondaryText).frame(width: 24)
+                Text("角色").font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.secondaryText)
+                Spacer()
+                Text(user.role.displayName).font(Theme.Typography.subheadline).foregroundStyle(Theme.Colors.primaryText)
+            }
+            .padding(.horizontal, Theme.Spacing.md).padding(.vertical, Theme.Spacing.md)
         }
         .background(Theme.Colors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-    }
-
-    private func infoRow(icon: String, label: String, value: String) -> some View {
-        HStack(spacing: Theme.Spacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Theme.Colors.secondaryText)
-                .frame(width: 24)
-            Text(label)
-                .font(Theme.Typography.subheadline)
-                .foregroundStyle(Theme.Colors.secondaryText)
-            Spacer()
-            Text(value)
-                .font(Theme.Typography.subheadline)
-                .foregroundStyle(Theme.Colors.primaryText)
-        }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.md)
     }
 
     // MARK: - Bound Child Card (Elderly View)
@@ -137,30 +148,13 @@ struct ProfileView: View {
                             .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(Theme.Colors.success)
                     }
-
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.boundUserName ?? "子女")
                             .font(Theme.Typography.subheadline.weight(.semibold))
                             .foregroundStyle(Theme.Colors.primaryText)
-                        Text(formatPhone(user.boundUserPhone ?? ""))
-                            .font(Theme.Typography.caption1)
-                            .foregroundStyle(Theme.Colors.secondaryText)
                     }
-
                     Spacer()
-
-                    Button {
-                        callPhone(user.boundUserPhone ?? "")
-                    } label: {
-                        Image(systemName: "phone.fill")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 36, height: 36)
-                            .background(Theme.Colors.success)
-                            .clipShape(Circle())
-                    }
                 }
-
                 HStack(spacing: Theme.Spacing.sm) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 12))
@@ -174,9 +168,7 @@ struct ProfileView: View {
                     Text("尚未绑定子女账号")
                         .font(Theme.Typography.subheadline)
                         .foregroundStyle(Theme.Colors.secondaryText)
-                    PrimaryButton("去绑定", icon: "link") {
-                        showBindingSheet = true
-                    }
+                    PrimaryButton("去绑定", icon: "link") { showBindingSheet = true }
                 }
             }
         }
@@ -208,27 +200,21 @@ struct ProfileView: View {
                             .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(Theme.Colors.healthBlue)
                     }
-
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.boundUserName ?? "老人")
                             .font(Theme.Typography.subheadline.weight(.semibold))
                             .foregroundStyle(Theme.Colors.primaryText)
-                        Text(formatPhone(user.boundUserPhone ?? ""))
-                            .font(Theme.Typography.caption1)
-                            .foregroundStyle(Theme.Colors.secondaryText)
                     }
-
                     Spacer()
-
-                    Button {
-                        callPhone(user.boundUserPhone ?? "")
-                    } label: {
-                        Image(systemName: "phone.fill")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 36, height: 36)
-                            .background(Theme.Colors.healthBlue)
-                            .clipShape(Circle())
+                    Button { sendCare() } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "heart.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(Theme.Colors.danger)
+                            Text("问候")
+                                .font(Theme.Typography.caption2)
+                                .foregroundStyle(Theme.Colors.danger)
+                        }
                     }
                 }
             } else {
@@ -236,9 +222,7 @@ struct ProfileView: View {
                     Text("尚未绑定老人账号")
                         .font(Theme.Typography.subheadline)
                         .foregroundStyle(Theme.Colors.secondaryText)
-                    PrimaryButton("去绑定", icon: "link") {
-                        showBindingSheet = true
-                    }
+                    PrimaryButton("去绑定", icon: "link") { showBindingSheet = true }
                 }
             }
         }
@@ -262,9 +246,7 @@ struct ProfileView: View {
 
             if !notificationManager.isAuthorized {
                 Button {
-                    Task {
-                        await notificationManager.requestAuthorization()
-                    }
+                    Task { await notificationManager.requestAuthorization() }
                 } label: {
                     HStack {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -300,6 +282,10 @@ struct ProfileView: View {
 
     // MARK: - Notification Records
 
+    private var myNotifications: [NotificationRecord] {
+        authStore.notifications(for: authStore.currentUser?.id ?? "")
+    }
+
     private var notificationRecordsSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack {
@@ -316,9 +302,16 @@ struct ProfileView: View {
                         .background(Theme.Colors.danger)
                         .clipShape(Capsule())
                 }
+                if myNotifications.count > 5 {
+                    Button("查看全部") {
+                        // Could navigate to full list view
+                    }
+                    .font(Theme.Typography.caption1)
+                    .foregroundStyle(Theme.Colors.healthBlue)
+                }
             }
 
-            if authStore.notificationRecords.isEmpty {
+            if myNotifications.isEmpty {
                 HStack {
                     Spacer()
                     VStack(spacing: Theme.Spacing.sm) {
@@ -334,9 +327,9 @@ struct ProfileView: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    ForEach(authStore.notificationRecords.prefix(5)) { record in
+                    ForEach(myNotifications.prefix(5)) { record in
                         notificationRecordRow(record)
-                        if record.id != authStore.notificationRecords.prefix(5).last?.id {
+                        if record.id != myNotifications.prefix(5).last?.id {
                             Divider().padding(.leading, 44)
                         }
                     }
@@ -353,12 +346,18 @@ struct ProfileView: View {
         } label: {
             HStack(spacing: Theme.Spacing.md) {
                 Circle()
-                    .fill(record.type == .taken ? Theme.Colors.success.opacity(0.12) : Theme.Colors.danger.opacity(0.12))
+                    .fill(record.type == .taken
+                          ? Theme.Colors.success.opacity(0.12)
+                          : Theme.Colors.danger.opacity(0.12))
                     .frame(width: 36, height: 36)
                     .overlay(
-                        Image(systemName: record.type == .taken ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        Image(systemName: record.type == .taken
+                              ? "checkmark.circle.fill"
+                              : "exclamationmark.circle.fill")
                             .font(.system(size: 16))
-                            .foregroundStyle(record.type == .taken ? Theme.Colors.success : Theme.Colors.danger)
+                            .foregroundStyle(record.type == .taken
+                                             ? Theme.Colors.success
+                                             : Theme.Colors.danger)
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -376,9 +375,7 @@ struct ProfileView: View {
                 Spacer()
 
                 if !record.isRead {
-                    Circle()
-                        .fill(Theme.Colors.danger)
-                        .frame(width: 8, height: 8)
+                    Circle().fill(Theme.Colors.danger).frame(width: 8, height: 8)
                 }
             }
             .padding(.horizontal, Theme.Spacing.md)
@@ -387,14 +384,71 @@ struct ProfileView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Data Management
+
+    private var dataManagementSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("数据管理")
+                .font(Theme.Typography.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.Colors.primaryText)
+
+            VStack(spacing: 0) {
+                Button { performExport(format: .json) } label: {
+                    HStack {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(Theme.Colors.healthBlue)
+                        Text("导出为 JSON")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        Spacer()
+                        Text("\(medicationStore.medications.count) 条记录")
+                            .font(Theme.Typography.caption1)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                }
+
+                Divider().padding(.leading, 44)
+
+                Button { performExport(format: .csv) } label: {
+                    HStack {
+                        Image(systemName: "tablecells")
+                            .foregroundStyle(Theme.Colors.healthBlue)
+                        Text("导出为 CSV")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        Spacer()
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                }
+            }
+            .background(Theme.Colors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+        }
+    }
+
+    private func performExport(format: DataExporter.ExportFormat) {
+        do {
+            let data = try DataExporter.shared.exportMedications(medicationStore.medications, format: format)
+            if let fileURL = DataExporter.shared.createShareableFile(data: data, format: format) {
+                exportData = fileURL
+                exportFileName = fileURL.lastPathComponent
+                showExportSheet = true
+            }
+        } catch {
+            exportErrorMessage = error.localizedDescription
+            showExportError = true
+        }
+    }
+
     // MARK: - Danger Zone
 
     private var dangerZone: some View {
         VStack(spacing: Theme.Spacing.sm) {
             if authStore.currentUser?.isBound == true {
-                Button {
-                    showUnbindAlert = true
-                } label: {
+                Button { showUnbindAlert = true } label: {
                     HStack {
                         Image(systemName: "link.badge.minus")
                         Text("解除绑定")
@@ -408,12 +462,23 @@ struct ProfileView: View {
                 }
             }
 
-            Button {
-                showLogoutAlert = true
-            } label: {
+            Button { showLogoutAlert = true } label: {
                 HStack {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                     Text("退出登录")
+                }
+                .font(Theme.Typography.subheadline)
+                .foregroundStyle(Theme.Colors.danger)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.md)
+                .background(Theme.Colors.danger.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+            }
+
+            Button { showDeleteAccountAlert = true } label: {
+                HStack {
+                    Image(systemName: "trash")
+                    Text("删除账号")
                 }
                 .font(Theme.Typography.subheadline)
                 .foregroundStyle(Theme.Colors.danger)
@@ -426,26 +491,27 @@ struct ProfileView: View {
         .padding(.top, Theme.Spacing.md)
     }
 
+    // MARK: - Care
+
+    @State private var careSent = false
+
+    private func sendCare() {
+        let title = "❤️ 子女问候"
+        let body = "「\(authStore.currentUser?.nickname ?? "")」向您问好，记得按时吃药哦！"
+        guard let elderlyId = authStore.currentUser?.boundUserId else { return }
+        notificationManager.sendLocalNotification(
+            title: title, body: body, type: .care,
+            medicationName: nil, recipientUserId: elderlyId
+        )
+        careSent = true
+        Theme.Haptics.success()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { careSent = false }
+    }
+
     // MARK: - Helpers
 
-    private func formatPhone(_ phone: String) -> String {
-        guard phone.count >= 11 else { return phone }
-        let start = phone.prefix(3)
-        let end = phone.suffix(4)
-        return "\(start)****\(end)"
-    }
-
     private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd HH:mm"
-        return formatter.string(from: date)
-    }
-
-    private func callPhone(_ phone: String) {
-        let cleaned = phone.replacingOccurrences(of: " ", with: "")
-        if let url = URL(string: "tel://\(cleaned)") {
-            UIApplication.shared.open(url)
-        }
+        Theme.DateFormats.shortDateTimeString(from: date)
     }
 }
 

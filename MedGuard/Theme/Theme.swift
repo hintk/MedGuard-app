@@ -27,18 +27,14 @@ enum Theme {
         static let takenBg  = Color(hex: "E6FFFA")
         static let takenFg = Color(hex: "2C7A7B")
 
-        // Text hierarchy (not pure black/gray)
-        static let primaryText   = Color(hex: "1A202C")   // Deep graphite
-        static let secondaryText = Color(hex: "718096")   // Smoke gray
+        // Text hierarchy - supports dark mode
+        static let primaryText = Color("PrimaryText")
+        static let secondaryText = Color("SecondaryText")
 
-        // Surface layers
-        static let background      = Color(uiColor: .systemGroupedBackground)
+        // Surface layers - uses system colors for automatic dark mode
+        static let background      = Color(uiColor: .systemBackground)
         static let cardBackground  = Color(uiColor: .secondarySystemGroupedBackground)
         static let tertiaryBg      = Color(uiColor: .tertiarySystemGroupedBackground)
-
-        // Dark mode surfaces
-        static let darkBackground     = Color(hex: "121212")
-        static let darkCardBackground = Color(hex: "1C1C1E")
 
         // Remaining text levels
         static let tertiaryText  = Color(uiColor: .tertiaryLabel)
@@ -50,6 +46,35 @@ enum Theme {
 
         // Transparent overlays
         static let glassOverlay = Color(uiColor: .systemBackground).opacity(0.72)
+    }
+
+    // MARK: - Color Assets for Dynamic Colors
+
+    static func adaptivePrimaryText(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color(hex: "F5F5F5") : Color(hex: "1A202C")
+    }
+
+    static func adaptiveSecondaryText(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color(hex: "A0AEC0") : Color(hex: "718096")
+    }
+
+    static func adaptiveCardBackground(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color(hex: "1C1C1E") : Color(uiColor: .secondarySystemGroupedBackground)
+    }
+
+    static func adaptiveBackground(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color(hex: "000000") : Color(uiColor: .systemGroupedBackground)
+    }
+
+    static func adaptiveRiskBackground(for colorScheme: ColorScheme, risk: RiskLevel) -> Color {
+        switch risk {
+        case .high:
+            return colorScheme == .dark ? Color(hex: "2D1B1B") : Color(hex: "FFF5F5")
+        case .medium:
+            return colorScheme == .dark ? Color(hex: "2D2517") : Color(hex: "FFFBEB")
+        case .low:
+            return colorScheme == .dark ? Color(hex: "1A2634") : Color(hex: "EBF8FF")
+        }
     }
 
     // MARK: - Typography
@@ -109,6 +134,66 @@ enum Theme {
         static let bouncy  = SwiftUI.Animation.spring(response: 0.30, dampingFraction: 0.60)
         static let smooth  = SwiftUI.Animation.easeInOut(duration: 0.25)
         static let snappy  = SwiftUI.Animation.spring(response: 0.28, dampingFraction: 0.70)
+    }
+
+    // MARK: - String Constants
+
+    enum Strings {
+        static let uncategorized = "未分类"
+    }
+
+    // MARK: - Date Formatters
+
+    enum DateFormats {
+        private static let timeFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "HH:mm"
+            return f
+        }()
+
+        private static let shortDateFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "MM-dd"
+            return f
+        }()
+
+        private static let shortDateTimeFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "MM-dd HH:mm"
+            return f
+        }()
+
+        private static let monthDayFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "MM月dd日"
+            return f
+        }()
+
+        private static let monthDayWeekdayFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "M月d日 E"
+            return f
+        }()
+
+        static func timeString(from date: Date) -> String {
+            timeFormatter.string(from: date)
+        }
+
+        static func shortDateString(from date: Date) -> String {
+            shortDateFormatter.string(from: date)
+        }
+
+        static func shortDateTimeString(from date: Date) -> String {
+            shortDateTimeFormatter.string(from: date)
+        }
+
+        static func monthDayString(from date: Date) -> String {
+            monthDayFormatter.string(from: date)
+        }
+
+        static func monthDayWeekdayString(from date: Date) -> String {
+            monthDayWeekdayFormatter.string(from: date)
+        }
     }
 
     // MARK: - Haptics

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-enum MedicationStatus: String, CaseIterable, Identifiable {
+enum MedicationStatus: String, CaseIterable, Identifiable, Codable {
     case pending = "提醒"
     case taken   = "确认"
     case skipped = "跳过"
@@ -86,12 +86,8 @@ enum RiskLevel: String, CaseIterable, Identifiable {
         }
     }
 
-    var bgColor: Color {
-        switch self {
-        case .high:   return Theme.Colors.highRiskBg
-        case .medium: return Theme.Colors.mediumRiskBg
-        case .low:    return Theme.Colors.lowRiskBg
-        }
+    func bgColor(for colorScheme: ColorScheme) -> Color {
+        Theme.adaptiveRiskBackground(for: colorScheme, risk: self)
     }
 
     var icon: String {

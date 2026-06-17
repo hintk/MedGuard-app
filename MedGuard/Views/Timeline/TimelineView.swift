@@ -16,9 +16,9 @@ struct TimelineView: View {
     }
     
     private var groupedRecords: [(TimelineGroup, [TimelineRecord])] {
-        MockData.groupRecordsByDate(
-            MockData.generateTimelineRecords(from: medicationStore.medications)
-        )
+        let data = PersistenceController.shared.loadTimelineRecords()
+        let records = data.map { $0.toTimelineRecord(medications: medicationStore.medications) }
+        return MockData.groupRecordsByDate(records)
     }
     
     private var todayMedications: [Medication] {
@@ -46,8 +46,14 @@ struct TimelineView: View {
                 }
 
                 if isHomeTimeline {
-                    HomeReminderCard(nextMedication: nextPendingMedication)
-                        .padding(.horizontal, Theme.Spacing.md)
+                    HomeReminderCard(
+                        nextMedication: nextPendingMedication,
+                        onConfirm: { medication in
+                            Theme.Haptics.success()
+                            medicationStore.updateStatus(for: medication.id, to: .taken)
+                        }
+                    )
+                    .padding(.horizontal, Theme.Spacing.md)
                 }
 
                 if isHomeTimeline {
@@ -79,8 +85,8 @@ struct TimelineView: View {
                             }
                             .padding(.horizontal, Theme.Spacing.md)
                         }
-                    }
                 }
+                    }
 
                 if isHomeTimeline && !completedMedications.isEmpty {
                     VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -187,26 +193,24 @@ struct TimelineView: View {
     }
 
     private func notifyChildTaken(medication: Medication) {
-        guard let user = authStore.currentUser, user.role == .elderly, user.isBound else { return }
+        guard let user = authStore.currentUser, user.role == .elderly, user.isBound,
+              let childId = user.boundUserId else { return }
         let title = "✅ 已服药提醒"
         let body = "「\(user.nickname)」已按时服用了「\(medication.name)」"
         notificationManager.sendLocalNotification(
-            title: title,
-            body: body,
-            type: .taken,
-            medicationName: medication.name
+            title: title, body: body, type: .taken,
+            medicationName: medication.name, recipientUserId: childId
         )
     }
 
     func notifyChildMissed(medication: Medication) {
-        guard let user = authStore.currentUser, user.role == .elderly, user.isBound else { return }
+        guard let user = authStore.currentUser, user.role == .elderly, user.isBound,
+              let childId = user.boundUserId else { return }
         let title = "⚠️ 漏服提醒"
         let body = "「\(user.nickname)」还没有服用「\(medication.name)」，记得提醒他！"
         notificationManager.sendLocalNotification(
-            title: title,
-            body: body,
-            type: .missed,
-            medicationName: medication.name
+            title: title, body: body, type: .missed,
+            medicationName: medication.name, recipientUserId: childId
         )
     }
 }
@@ -248,6 +252,7 @@ private struct ConfirmTakenSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
                 
                 Button {
+                    Theme.Haptics.success()
                     onConfirm()
                 } label: {
                     Text("确认服药")
@@ -268,9 +273,7 @@ private struct ConfirmTakenSheet: View {
 
 private struct DateSubtitleView: View {
     private var dateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "M月d日 E"
-        return formatter.string(from: Date())
+        Theme.DateFormats.monthDayWeekdayString(from: Date())
     }
 
     var body: some View {
@@ -293,7 +296,7 @@ private struct EmptyPendingView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(Theme.Spacing.lg)
-        .background(Color.white)
+        .background(Theme.Colors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.card))
         .cardShadow(Theme.Shadow.subtle)
     }
@@ -301,6 +304,7 @@ private struct EmptyPendingView: View {
 
 private struct HomeReminderCard: View {
     let nextMedication: Medication?
+    let onConfirm: (Medication) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -319,7 +323,7 @@ private struct HomeReminderCard: View {
                         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                             Text(nextMedication.timeString)
                                 .font(Theme.Typography.timeDisplay)
-                                .foregroundColor(Theme.Colors.iosDarkGray)
+                                .foregroundColor(Theme.Colors.primaryText)
 
                             Text(nextMedication.name)
                                 .font(Theme.Typography.headline)
@@ -328,15 +332,20 @@ private struct HomeReminderCard: View {
 
                         Spacer()
 
-                        Text("确认服用")
-                            .font(Theme.Typography.footnote)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(Theme.Colors.healthBlue)
-                            .clipShape(Capsule())
-                            .shadow(color: Theme.Colors.healthBlue.opacity(0.3), radius: 8, x: 0, y: 4)
+                        Button {
+                            onConfirm(nextMedication)
+                        } label: {
+                            Text("确认服用")
+                                .font(Theme.Typography.footnote)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Theme.Colors.healthBlue)
+                                .clipShape(Capsule())
+                                .shadow(color: Theme.Colors.healthBlue.opacity(0.3), radius: 8, x: 0, y: 4)
+                        }
+                        .accessibilityLabel("确认服用 \(nextMedication.name)")
                     }
                 } else {
                     HStack {
@@ -356,7 +365,7 @@ private struct HomeReminderCard: View {
             }
             .padding(Theme.Spacing.lg)
         }
-        .background(Color.white)
+        .background(Theme.Colors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.card))
         .cardShadow(Theme.Shadow.card)
     }
@@ -366,6 +375,8 @@ private struct TimelineMedicationCard: View {
     let medication: Medication
     let onConfirmTaken: () -> Void
     let onSkip: () -> Void
+
+    @State private var showSkipConfirmation = false
 
     private var statusBadgeColor: Color {
         switch medication.status {
@@ -421,11 +432,11 @@ private struct TimelineMedicationCard: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(medication.name)
                     .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.iosDarkGray)
+                    .foregroundColor(Theme.Colors.primaryText)
 
                 Text("\(medication.timeString) · \(medication.dosage)")
                     .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.iosGray)
+                    .foregroundColor(Theme.Colors.secondaryText)
 
                 // Status capsule tag
                 Text(statusLabel)
@@ -450,7 +461,9 @@ private struct TimelineMedicationCard: View {
                         bgColor: Theme.Colors.healthBlue
                     ) {
                         onConfirmTaken()
+                        Theme.Haptics.success()
                     }
+                    .accessibilityLabel("确认服药 \(medication.name)")
 
                     CompactActionButton(
                         title: "跳过",
@@ -458,8 +471,9 @@ private struct TimelineMedicationCard: View {
                         color: Theme.Colors.iosGray,
                         bgColor: Theme.Colors.iosGray.opacity(0.12)
                     ) {
-                        onSkip()
+                        showSkipConfirmation = true
                     }
+                    .accessibilityLabel("跳过服药 \(medication.name)")
                 }
             } else {
                 Image(systemName: medication.status == .taken ? "checkmark.circle.fill" : "forward.fill")
@@ -468,9 +482,19 @@ private struct TimelineMedicationCard: View {
             }
         }
         .padding(Theme.Spacing.md)
-        .background(Color.white)
+        .background(Theme.Colors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.card))
         .cardShadow(Theme.Shadow.card)
+        .accessibilityLabel("\(medication.name), \(medication.timeString), \(medication.dosage), \(statusLabel)")
+        .alert("确认跳过", isPresented: $showSkipConfirmation) {
+            Button("取消", role: .cancel) {}
+            Button("跳过", role: .destructive) {
+                onSkip()
+                Theme.Haptics.light()
+            }
+        } message: {
+            Text("确定要跳过「\(medication.name)」吗？")
+        }
     }
 }
 
@@ -529,11 +553,11 @@ private struct TimelineRow: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(record.medication.name)
                     .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.iosDarkGray)
+                    .foregroundColor(Theme.Colors.primaryText)
 
                 Text(group == .earlier ? record.dateString : record.timeString)
                     .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.iosGray)
+                    .foregroundColor(Theme.Colors.secondaryText)
             }
 
             Spacer()
@@ -553,7 +577,7 @@ private struct TimelineRow: View {
             .clipShape(Capsule())
         }
         .padding(Theme.Spacing.md)
-        .background(Color.white)
+        .background(Theme.Colors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.card))
         .cardShadow(Theme.Shadow.subtle)
     }

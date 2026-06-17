@@ -3,6 +3,7 @@ import SwiftUI
 enum MedicationEntryMode {
     case manual
     case scanned(code: String)
+    case edit(medication: Medication)
     
     var title: String {
         switch self {
@@ -10,6 +11,8 @@ enum MedicationEntryMode {
             return "手动添加"
         case .scanned:
             return "扫描导入"
+        case .edit:
+            return "编辑药品"
         }
     }
     
@@ -19,7 +22,14 @@ enum MedicationEntryMode {
             return .manual
         case .scanned:
             return .scanned
+        case .edit(let medication):
+            return medication.source
         }
+    }
+    
+    var isEditing: Bool {
+        if case .edit = self { return true }
+        return false
     }
 }
 
@@ -31,12 +41,29 @@ struct MedicationEntrySheet: View {
     
     @State private var name = ""
     @State private var category = ""
-    @State private var doseAmount = "1"
-    @State private var remainingAmount = "24"
-    @State private var packageCount = "2"
-    @State private var amountPerPackage = "12"
+    @State private var doseAmount = ""
+    @State private var remainingAmount = ""
+    @State private var packageCount = ""
+    @State private var amountPerPackage = ""
     @State private var selectedUnit: MedicationUnit = .pill
     @State private var selectedTime = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
+    @State private var originalMedicationId: String?
+    @State private var showDrugSearch = false
+    
+    init(entryMode: MedicationEntryMode) {
+        self.entryMode = entryMode
+        if case let .edit(medication) = entryMode {
+            _name = State(initialValue: medication.name)
+            _category = State(initialValue: medication.category)
+            _doseAmount = State(initialValue: String(medication.doseAmount))
+            _remainingAmount = State(initialValue: String(medication.remainingAmount))
+            _packageCount = State(initialValue: String(medication.packageCount))
+            _amountPerPackage = State(initialValue: String(medication.amountPerPackage))
+            _selectedUnit = State(initialValue: medication.doseUnit)
+            _selectedTime = State(initialValue: medication.time)
+            _originalMedicationId = State(initialValue: medication.id)
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -51,7 +78,17 @@ struct MedicationEntrySheet: View {
                 }
                 
                 Section("药品信息") {
-                    TextField("药品名称", text: $name)
+                    HStack {
+                        TextField("药品名称", text: $name)
+                        
+                        Button {
+                            showDrugSearch = true
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(Theme.Colors.healthBlue)
+                        }
+                    }
+                    
                     TextField("分类", text: $category)
                     Picker("计量单位", selection: $selectedUnit) {
                         ForEach(MedicationUnit.allCases) { unit in
@@ -88,112 +125,54 @@ struct MedicationEntrySheet: View {
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .sheet(isPresented: $showDrugSearch) {
+                DrugSearchSheet { drug in
+                    name = drug.name
+                    category = drug.category
+                }
+            }
         }
     }
     
     private func saveMedication() {
-        let dose = max(Int(doseAmount) ?? 1, 1)
+        let dose = max(Int(doseAmount) ?? 0, 0)
         let remaining = max(Int(remainingAmount) ?? 0, 0)
         let packages = max(Int(packageCount) ?? 0, 0)
-        let perPackage = max(Int(amountPerPackage) ?? 1, 1)
+        let perPackage = max(Int(amountPerPackage) ?? 0, 0)
         
-        let medication = Medication(
-            id: UUID().uuidString,
-            name: name,
-            category: category.isEmpty ? "未分类" : category,
-            dosage: "\(dose)\(selectedUnit.rawValue)",
-            time: selectedTime,
-            status: .pending,
-            doseAmount: dose,
-            doseUnit: selectedUnit,
-            remainingAmount: remaining,
-            packageCount: packages,
-            amountPerPackage: perPackage,
-            source: entryMode.source
-        )
+        if case let .edit(originalMedication) = entryMode {
+            var updatedMedication = originalMedication
+            updatedMedication.name = name
+            updatedMedication.category = category.isEmpty ? Theme.Strings.uncategorized : category
+            updatedMedication.dosage = "\(dose)\(selectedUnit.rawValue)"
+            updatedMedication.time = selectedTime
+            updatedMedication.doseAmount = dose
+            updatedMedication.doseUnit = selectedUnit
+            updatedMedication.remainingAmount = remaining
+            updatedMedication.packageCount = packages
+            updatedMedication.amountPerPackage = perPackage
+            
+            medicationStore.updateMedication(updatedMedication)
+        } else {
+            let medication = Medication(
+                id: UUID().uuidString,
+                name: name,
+                category: category.isEmpty ? Theme.Strings.uncategorized : category,
+                dosage: "\(dose)\(selectedUnit.rawValue)",
+                time: selectedTime,
+                status: .pending,
+                doseAmount: dose,
+                doseUnit: selectedUnit,
+                remainingAmount: remaining,
+                packageCount: packages,
+                amountPerPackage: perPackage,
+                source: entryMode.source
+            )
+            
+            medicationStore.addMedication(medication)
+        }
         
-        medicationStore.addMedication(medication)
         dismiss()
     }
 }
 
-struct ScanImportSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var medicationStore: MedicationStore
-    @State private var showScanner = false
-    @State private var scannedCode: String?
-    @State private var scannerError: ScannerError?
-    @State private var showEntrySheet = false
-    
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: Theme.Spacing.lg) {
-                Spacer()
-                
-                Image(systemName: "barcode.viewfinder")
-                    .font(.system(size: 60))
-                    .foregroundColor(Theme.Colors.healthBlue)
-                
-                Text("从药品档案直接扫描导入")
-                    .font(Theme.Typography.title3)
-                    .foregroundColor(Theme.Colors.primaryText)
-                
-                Text("扫完后可直接补全药名、单位和库存")
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                
-                PrimaryButton("开始扫描", icon: "camera.fill", style: .primary) {
-                    showScanner = true
-                }
-                .padding(.horizontal, Theme.Spacing.lg)
-                
-                Spacer()
-            }
-            .padding(Theme.Spacing.lg)
-            .background(Theme.Colors.background)
-            .navigationTitle("扫描导入")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("关闭") {
-                        dismiss()
-                    }
-                }
-            }
-            .sheet(isPresented: $showScanner) {
-                ScannerView(scannedCode: $scannedCode, scannerError: $scannerError)
-            }
-            .sheet(isPresented: $showEntrySheet, onDismiss: {
-                dismiss()
-            }) {
-                if let scannedCode {
-                    MedicationEntrySheet(entryMode: .scanned(code: scannedCode))
-                        .environmentObject(medicationStore)
-                }
-            }
-            .onChange(of: scannedCode) { newValue in
-                if newValue != nil {
-                    showEntrySheet = true
-                }
-            }
-            .alert("无法启动相机", isPresented: scannerErrorBinding) {
-                Button("知道了") {
-                    scannerError = nil
-                }
-            } message: {
-                Text(scannerError?.message ?? "请稍后重试")
-            }
-        }
-    }
-    
-    private var scannerErrorBinding: Binding<Bool> {
-        Binding(
-            get: { scannerError != nil },
-            set: { newValue in
-                if !newValue {
-                    scannerError = nil
-                }
-            }
-        )
-    }
-}

@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 enum UserRole: String, Codable, CaseIterable {
     case elderly = "elderly"
@@ -21,55 +22,32 @@ enum UserRole: String, Codable, CaseIterable {
 
 struct User: Identifiable, Codable, Equatable {
     let id: String
-    var phone: String
-    var passwordHash: String
     var nickname: String
     var role: UserRole
     var boundUserId: String?
     var boundUserName: String?
-    var boundUserPhone: String?
     var createdAt: Date
 
     var isBound: Bool {
         boundUserId != nil
     }
 
-    var inviteCode: String {
-        String(id.prefix(8)).uppercased()
-    }
 
     init(
         id: String = UUID().uuidString,
-        phone: String,
-        passwordHash: String,
         nickname: String,
         role: UserRole,
         boundUserId: String? = nil,
         boundUserName: String? = nil,
-        boundUserPhone: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
-        self.phone = phone
-        self.passwordHash = passwordHash
         self.nickname = nickname
         self.role = role
         self.boundUserId = boundUserId
         self.boundUserName = boundUserName
-        self.boundUserPhone = boundUserPhone
         self.createdAt = createdAt
     }
-}
-
-struct BindingRequest: Identifiable, Codable {
-    let id: String
-    let elderlyId: String
-    let elderlyName: String
-    let elderlyPhone: String
-    let elderlyInviteCode: String
-    let childId: String
-    let childName: String
-    let childPhone: String
 }
 
 struct NotificationRecord: Identifiable, Codable {
@@ -78,12 +56,14 @@ struct NotificationRecord: Identifiable, Codable {
     let title: String
     let body: String
     let medicationName: String?
+    let recipientUserId: String
     let timestamp: Date
     let isRead: Bool
 
     enum NotificationType: String, Codable {
         case taken = "taken"
         case missed = "missed"
+        case care = "care"
     }
 
     init(
@@ -92,6 +72,7 @@ struct NotificationRecord: Identifiable, Codable {
         title: String,
         body: String,
         medicationName: String? = nil,
+        recipientUserId: String,
         timestamp: Date = Date(),
         isRead: Bool = false
     ) {
@@ -100,6 +81,7 @@ struct NotificationRecord: Identifiable, Codable {
         self.title = title
         self.body = body
         self.medicationName = medicationName
+        self.recipientUserId = recipientUserId
         self.timestamp = timestamp
         self.isRead = isRead
     }

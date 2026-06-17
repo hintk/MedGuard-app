@@ -2,5 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>使用面容识别快速安全地解锁 MedGuard</string>
+	<key>NSCameraUsageDescription</key>
+	<string>MedGuard 需要使用相机拍摄药盒，通过 AI 识别药品信息</string>
 </dict>
 </plist>

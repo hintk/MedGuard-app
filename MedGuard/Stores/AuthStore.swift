@@ -210,10 +210,13 @@ final class AuthStore: ObservableObject {
             record = NotificationRecord(
                 id: record.id,
                 type: record.type,
+                kind: record.kind,
                 title: record.title,
                 body: record.body,
                 medicationName: record.medicationName,
                 recipientUserId: record.recipientUserId,
+                senderUserId: record.senderUserId,
+                replyEmojiRaw: record.replyEmojiRaw,
                 timestamp: record.timestamp,
                 isRead: true
             )
@@ -227,8 +230,66 @@ final class AuthStore: ObservableObject {
         return notificationRecords.filter { !$0.isRead && $0.recipientUserId == userId }.count
     }
 
+    /// Records visible in the current user's message list.
+    /// Includes both received records (`recipientUserId == userId`) and
+    /// records this user has sent (`senderUserId == userId`), so the
+    /// elderly can also see their own replies in the timeline.
     func notifications(for userId: String) -> [NotificationRecord] {
-        notificationRecords.filter { $0.recipientUserId == userId }
+        notificationRecords
+            .filter { $0.recipientUserId == userId || $0.senderUserId == userId }
+            .sorted { $0.timestamp > $1.timestamp }
+    }
+
+    // MARK: - Quick Reply (双向消息)
+
+    /// Send a quick-reply emoji from the elderly user to their bound child.
+    /// Persists a `kind: .reply` record in the child's inbox and also
+    /// surfaces it in the elderly's own list as a sent item.
+    @discardableResult
+    func sendQuickReply(_ emoji: QuickReplyEmoji, from senderId: String) -> NotificationRecord? {
+        guard let sender = allUsers.first(where: { $0.id == senderId }) else { return nil }
+        guard let recipientId = sender.boundUserId else { return nil }
+
+        let record = NotificationRecord(
+            type: .reply,
+            kind: .reply,
+            title: emoji.notificationTitle,
+            body: emoji.notificationBody(senderName: sender.nickname),
+            recipientUserId: recipientId,
+            senderUserId: sender.id,
+            replyEmojiRaw: emoji.rawValue
+        )
+        addNotificationRecord(record)
+        return record
+    }
+
+    func deleteNotification(id: String) {
+        notificationRecords.removeAll { $0.id == id }
+        saveNotificationRecords()
+    }
+
+    /// Clear all messages belonging to the given user's inbox. Does NOT
+    /// touch records the user has sent — those remain in the recipient's
+    /// inbox. Use `clearAllForBothSides(for:)` to wipe both perspectives.
+    func clearAllNotifications(for userId: String) {
+        let before = notificationRecords.count
+        notificationRecords.removeAll { $0.recipientUserId == userId }
+        if notificationRecords.count != before {
+            saveNotificationRecords()
+        }
+    }
+
+    /// Clear the current user's received inbox AND their own sent messages
+    /// (so the timeline becomes empty from this user's perspective).
+    func clearAllForCurrentUser() {
+        guard let userId = currentUser?.id else { return }
+        let before = notificationRecords.count
+        notificationRecords.removeAll {
+            $0.recipientUserId == userId || $0.senderUserId == userId
+        }
+        if notificationRecords.count != before {
+            saveNotificationRecords()
+        }
     }
 
     // MARK: - Persistence

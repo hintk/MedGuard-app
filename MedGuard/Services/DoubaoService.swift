@@ -6,14 +6,7 @@ import UIKit
 final class DoubaoService {
     static let shared = DoubaoService()
 
-    private let apiKey = "ark-0755e5d2-1471-4926-a6a4-2b1ef5d57452-861e1"
-    /// 视觉模型推理接入点（Doubao-Seed-1.6-vision）
-    private let visionEndpointID = "ep-20260616152526-z5v6t"
-    /// 文本模型推理接入点（Doubao-Lite — 用于风险分析）
-    private let textEndpointID = "ark-0755e5d2-1471-4926-a6a4-2b1ef5d57452-861e1"
-
-    private let visionBaseURL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
-    private let textBaseURL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+    private var config: APIConfig { APIConfigStore.currentConfig }
 
     private let session: URLSession
 
@@ -55,7 +48,7 @@ final class DoubaoService {
 
         // Chat Completions API 格式
         let body: [String: Any] = [
-            "model": visionEndpointID,
+            "model": config.visionModel,
             "messages": [[
                 "role": "user",
                 "content": [
@@ -95,27 +88,43 @@ final class DoubaoService {
         let valid = medications.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
         guard valid.count >= 2 else { return [] }
 
-        let drugList = valid.map { "\($0.name)（\($0.category)）" }.joined(separator: "，")
+        let drugList = valid.enumerated().map { i, med in
+            """
+            药品\(i + 1)：
+            - 名称：\(med.name)
+            - 分类：\(med.category.isEmpty ? "未分类" : med.category)
+            - 规格/剂量：\(med.dosage.isEmpty ? "未知" : med.dosage)
+            - 每次用量：\(med.doseAmount)\(med.doseUnit.rawValue)
+            - 剩余库存：\(med.remainingAmount)\(med.doseUnit.rawValue)（\(med.packageCount)盒）
+            - 来源：\(med.source.rawValue)
+            """
+        }.joined(separator: "\n\n")
 
         let prompt = """
-        以下药品清单：\(drugList)
+        你是一位资深临床药师。请分析以下用户正在服用的所有药品，评估潜在的药物相互作用风险。
 
-        分析所有可能的药物相互作用风险，按风险等级从高到低排列。
-        按以下JSON数组格式返回，不要包含其他文字：
-        [{"level": "high/medium/low", "medications": ["药A","药B"], "description": "风险描述", "recommendation": "建议措施"}]
+        用户用药清单：
+        \(drugList)
 
-        high=高风险需立即处理，medium=中风险需留意，low=低风险常规注意。
-        如无任何相互作用风险则返回空数组[]。
+        请综合分析所有药品之间的相互作用，按风险等级从高到低排列。
+        严格按以下JSON数组格式返回，不要包含其他任何文字：
+        [{"level": "high/medium/low", "medications": ["药A","药B"], "description": "具体的风险描述，说明可能的机制和后果", "recommendation": "详细的建议措施，包括是否需要就医、调整剂量、错开服药时间等"}]
+
+        等级说明：
+        - high：可能造成严重不良反应，需立即就医或停药
+        - medium：存在一定风险，需调整用药方案或加强监测
+        - low：轻微的相互作用，常规注意即可
+        如确实无任何相互作用风险则返回空数组[]。
         """
 
         let body: [String: Any] = [
-            "model": textEndpointID,
+            "model": config.textModel,
             "messages": [[
                 "role": "user",
                 "content": [["type": "text", "text": prompt]]
             ]],
             "temperature": 0.1,
-            "max_tokens": 2000
+            "max_tokens": 3000
         ]
 
         let content = try await sendChatRequest(body: body)
@@ -144,12 +153,12 @@ final class DoubaoService {
     }
 
     private func sendChatRequest(body: [String: Any]) async throws -> String {
-        guard let url = URL(string: textBaseURL) else { throw ServiceError.networkError }
+        guard let url = URL(string: config.baseURL) else { throw ServiceError.networkError }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)

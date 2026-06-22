@@ -9,6 +9,10 @@ struct LoginView: View {
     @State private var showNewUser = false
     @State private var biometricError: String?
     @State private var showBiometricError = false
+    @State private var showPinUnlock = false
+    @State private var showPinSetup = false
+    @State private var pendingNickname = ""
+    @State private var pendingRole: UserRole = .elderly
 
     private var isFirstLaunch: Bool { !authStore.hasProfile }
 
@@ -35,6 +39,23 @@ struct LoginView: View {
                 Button("确定") {}
             } message: {
                 Text(biometricError ?? "无法验证身份")
+            }
+            .sheet(isPresented: $showPinUnlock) {
+                PinUnlockSheet {
+                    authStore.unlock()
+                }
+            }
+            .sheet(isPresented: $showPinSetup) {
+                PinSetupForRegistrationView(
+                    onSuccess: {
+                        let user = authStore.setupProfile(nickname: pendingNickname, role: pendingRole)
+                        showPinSetup = false
+                        if user.role == .elderly { showBinding = true }
+                    },
+                    onCancel: {
+                        showPinSetup = false
+                    }
+                )
             }
         }
     }
@@ -78,6 +99,30 @@ struct LoginView: View {
             }
 
             PrimaryButton("面容 ID 解锁", icon: "faceid") { authenticate() }
+
+            if PinStore.hasPin {
+                Button {
+                    showPinUnlock = true
+                } label: {
+                    HStack {
+                        Image(systemName: "number.square")
+                        Text("使用 6 位数字密码")
+                    }
+                    .font(Theme.Typography.subheadline)
+                    .foregroundStyle(Theme.Colors.healthBlue)
+                }
+            } else {
+                Button {
+                    showPinUnlock = true
+                } label: {
+                    HStack {
+                        Image(systemName: "number.square")
+                        Text("设置 6 位数字密码")
+                    }
+                    .font(Theme.Typography.subheadline)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                }
+            }
 
             // Switch account
             if authStore.allUsers.count > 1 {
@@ -141,11 +186,11 @@ struct LoginView: View {
                 }
             }
 
-            PrimaryButton("开始使用", icon: "checkmark") {
+            PrimaryButton("设置 6 位密码并开始使用", icon: "lock.shield.fill") {
                 let trimmed = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
-                let name = trimmed.isEmpty ? "用户" : trimmed
-                let user = authStore.setupProfile(nickname: name, role: selectedRole)
-                if user.role == .elderly { showBinding = true }
+                pendingNickname = trimmed.isEmpty ? "用户" : trimmed
+                pendingRole = selectedRole
+                showPinSetup = true
             }
         }
     }
@@ -223,6 +268,9 @@ private struct NewUserSetupView: View {
     @State private var nickname = ""
     @State private var selectedRole: UserRole = .elderly
     @State private var showBinding = false
+    @State private var showPinSetup = false
+    @State private var pendingName = ""
+    @State private var pendingRole: UserRole = .elderly
 
     var body: some View {
         NavigationStack {
@@ -254,12 +302,11 @@ private struct NewUserSetupView: View {
                         }
                     }
 
-                    PrimaryButton("创建并登录", icon: "person.badge.plus") {
+                    PrimaryButton("设置 6 位密码并创建", icon: "lock.shield.fill") {
                         let trimmed = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let name = trimmed.isEmpty ? "用户" : trimmed
-                        let user = authStore.setupProfile(nickname: name, role: selectedRole)
-                        if user.role == .elderly { showBinding = true }
-                        dismiss()
+                        pendingName = trimmed.isEmpty ? "用户" : trimmed
+                        pendingRole = selectedRole
+                        showPinSetup = true
                     }
                 }
                 .padding(Theme.Spacing.lg)
@@ -270,6 +317,19 @@ private struct NewUserSetupView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("取消") { dismiss() } } }
             .navigationDestination(isPresented: $showBinding) { AccountBindingView() }
+            .sheet(isPresented: $showPinSetup) {
+                PinSetupForRegistrationView(
+                    onSuccess: {
+                        let user = authStore.setupProfile(nickname: pendingName, role: pendingRole)
+                        showPinSetup = false
+                        if user.role == .elderly { showBinding = true }
+                        dismiss()
+                    },
+                    onCancel: {
+                        showPinSetup = false
+                    }
+                )
+            }
         }
     }
 
@@ -294,6 +354,34 @@ private struct NewUserSetupView: View {
                 .stroke(isSelected ? Theme.Colors.healthBlue : Theme.Colors.tertiaryBg, lineWidth: isSelected ? 2 : 1))
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - PIN Setup for Registration
+
+private struct PinSetupForRegistrationView: View {
+    let onSuccess: () -> Void
+    let onCancel: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        PinKeypadView(
+            mode: .setNew,
+            prompt: "请设置 6 位数字密码\n用于保护您的用药数据",
+            onMatch: nil,
+            onMismatch: nil,
+            onSaved: { _ in
+                Theme.Haptics.success()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    onSuccess()
+                }
+            },
+            onDisabled: nil,
+            onCancel: {
+                onCancel()
+            }
+        )
+        .interactiveDismissDisabled(true)
     }
 }
 

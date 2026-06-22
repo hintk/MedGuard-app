@@ -6,6 +6,7 @@ struct RiskView: View {
     @State private var aiRisks: [DoubaoService.InteractionRisk] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -74,6 +75,20 @@ struct RiskView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Theme.Colors.background.opacity(0.9), for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                RiskSettingsSheet()
+            }
             .task { loadRisks() }
         }
     }

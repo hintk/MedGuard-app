@@ -90,6 +90,30 @@ final class NotificationManager: ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
 
+    /// Forward a quick-reply emoji from the elderly to their bound child.
+    /// The actual persistence happens in `AuthStore.sendQuickReply`; this
+    /// wrapper exists so callers don't have to know which store owns the data.
+    @discardableResult
+    func sendQuickReply(_ emoji: QuickReplyEmoji, sender: User) -> NotificationRecord? {
+        let record = AuthStore.shared.sendQuickReply(emoji, from: sender.id)
+        if let record, isAuthorized {
+            let content = UNMutableNotificationContent()
+            content.title = record.title
+            content.body = record.body
+            content.sound = .default
+            content.userInfo = ["type": NotificationRecord.NotificationType.reply.rawValue]
+
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString,
+                content: content,
+                trigger: trigger
+            )
+            UNUserNotificationCenter.current().add(request)
+        }
+        return record
+    }
+
     func registerNotificationCategories() {
         let takenAction = UNNotificationAction(
             identifier: "MARK_TAKEN",

@@ -31,10 +31,10 @@ targets:
         type: group
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.medguard.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.wangchuhao.medguard.ios
         INFOPLIST_KEY_CFBundleDisplayName: "MedGuard"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        DEVELOPMENT_TEAM: ""
+        DEVELOPMENT_TEAM: T46WJ9798V
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_IDENTITY: "Apple Development"

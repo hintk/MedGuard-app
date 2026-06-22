@@ -13,6 +13,10 @@ struct ProfileView: View {
     @State private var exportFileName: String = ""
     @State private var showExportError = false
     @State private var exportErrorMessage = ""
+    @State private var showPinSettings = false
+    @State private var pinSettingMode: PinKeypadView.Mode = .setNew
+    @State private var pinSettingTitle: String = "设置 6 位数字密码"
+    @State private var pinSettingToast: String?
 
     var body: some View {
         NavigationStack {
@@ -23,13 +27,15 @@ struct ProfileView: View {
                         userInfoCard(user: user)
                         if user.role == .elderly {
                             boundChildCard(user: user)
+                            if user.isBound { quickReplyCard }
                             notificationSettingsCard
                         } else {
                             boundElderlyCard(user: user)
                         }
-                    notificationRecordsSection
-                    dataManagementSection
-                    dangerZone
+                        securitySection
+                        notificationRecordsSection
+                        dataManagementSection
+                        dangerZone
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -38,8 +44,32 @@ struct ProfileView: View {
             .background(Theme.Colors.background)
             .navigationTitle("我的")
             .navigationBarTitleDisplayMode(.large)
+            .overlay(alignment: .bottom) {
+                if showReplyToast {
+                    replyToast
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, Theme.Spacing.lg)
+                }
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showReplyToast)
             .sheet(isPresented: $showBindingSheet) {
                 AccountBindingView()
+            }
+            .sheet(isPresented: $showPinSettings) {
+                PinSettingsSheet(
+                    initialMode: pinSettingMode,
+                    title: pinSettingTitle,
+                    onFinished: { message in
+                        pinSettingToast = message
+                        showPinSettings = false
+                    }
+                )
+            }
+            .alert(pinSettingToast ?? "", isPresented: Binding(
+                get: { pinSettingToast != nil },
+                set: { if !$0 { pinSettingToast = nil } }
+            )) {
+                Button("好") { pinSettingToast = nil }
             }
             .alert("确认解除绑定？", isPresented: $showUnbindAlert) {
                 Button("解除绑定", role: .destructive) { authStore.unbind() }
@@ -231,6 +261,52 @@ struct ProfileView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
     }
 
+    // MARK: - Quick Reply (老人向子女发送表情)
+
+    private var quickReplyCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .foregroundStyle(Theme.Colors.healthBlue)
+                Text("回复子女")
+                    .font(Theme.Typography.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                Spacer()
+            }
+
+            Text("点一下,把您想说的告诉子女")
+                .font(Theme.Typography.caption1)
+                .foregroundStyle(Theme.Colors.secondaryText)
+
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(QuickReplyEmoji.allCases) { emoji in
+                    Button {
+                        sendQuickReply(emoji)
+                    } label: {
+                        VStack(spacing: 4) {
+                            Text(emoji.emoji)
+                                .font(.system(size: 28))
+                            Text(emoji.displayText)
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(Theme.Colors.secondaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .background(Theme.Colors.healthBlue.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(emoji.displayText)
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+    }
+
     // MARK: - Notification Settings
 
     private var notificationSettingsCard: some View {
@@ -280,6 +356,90 @@ struct ProfileView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
     }
 
+    // MARK: - Security
+
+    private var securitySection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("安全")
+                .font(Theme.Typography.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.Colors.primaryText)
+
+            VStack(spacing: 0) {
+                if PinStore.hasPin {
+                    row(
+                        icon: "lock.fill",
+                        title: "修改 6 位数字密码",
+                        accessory: AnyView(
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.Colors.tertiaryText)
+                        )
+                    ) {
+                        pinSettingMode = .change
+                        pinSettingTitle = "修改 6 位数字密码"
+                        showPinSettings = true
+                    }
+                    Divider().padding(.leading, 44)
+                    row(
+                        icon: "lock.open.fill",
+                        title: "关闭 6 位数字密码",
+                        accessory: AnyView(
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.Colors.tertiaryText)
+                        )
+                    ) {
+                        pinSettingMode = .disable
+                        pinSettingTitle = "关闭 6 位数字密码"
+                        showPinSettings = true
+                    }
+                } else {
+                    row(
+                        icon: "lock.fill",
+                        title: "设置 6 位数字密码",
+                        accessory: AnyView(
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.Colors.tertiaryText)
+                        )
+                    ) {
+                        pinSettingMode = .setNew
+                        pinSettingTitle = "设置 6 位数字密码"
+                        showPinSettings = true
+                    }
+                }
+            }
+            .background(Theme.Colors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+
+            Text(PinStore.hasPin
+                 ? "下次启动时,可使用面容 ID 或 6 位数字密码解锁"
+                 : "开启后,下次启动时除面容 ID 外还可使用 6 位数字密码解锁")
+                .font(Theme.Typography.caption1)
+                .foregroundStyle(Theme.Colors.secondaryText)
+        }
+    }
+
+    private func row<Accessory: View>(icon: String,
+                                      title: String,
+                                      accessory: Accessory,
+                                      action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: icon).foregroundStyle(Theme.Colors.healthBlue)
+                Text(title)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundStyle(Theme.Colors.primaryText)
+                Spacer()
+                accessory
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Notification Records
 
     private var myNotifications: [NotificationRecord] {
@@ -303,11 +463,14 @@ struct ProfileView: View {
                         .clipShape(Capsule())
                 }
                 if myNotifications.count > 5 {
-                    Button("查看全部") {
-                        // Could navigate to full list view
+                    NavigationLink {
+                        MessagesView()
+                            .environmentObject(authStore)
+                    } label: {
+                        Text("查看全部")
+                            .font(Theme.Typography.caption1)
+                            .foregroundStyle(Theme.Colors.healthBlue)
                     }
-                    .font(Theme.Typography.caption1)
-                    .foregroundStyle(Theme.Colors.healthBlue)
                 }
             }
 
@@ -341,6 +504,13 @@ struct ProfileView: View {
     }
 
     private func notificationRecordRow(_ record: NotificationRecord) -> some View {
+        if record.kind == .reply {
+            return AnyView(replyPreviewRow(record))
+        }
+        return AnyView(systemPreviewRow(record))
+    }
+
+    private func systemPreviewRow(_ record: NotificationRecord) -> some View {
         Button {
             authStore.markNotificationRead(record.id)
         } label: {
@@ -382,6 +552,33 @@ struct ProfileView: View {
             .padding(.vertical, Theme.Spacing.sm)
         }
         .buttonStyle(.plain)
+    }
+
+    private func replyPreviewRow(_ record: NotificationRecord) -> some View {
+        let isOutgoing = record.senderUserId == authStore.currentUser?.id
+        return HStack(alignment: .center, spacing: Theme.Spacing.md) {
+            Circle()
+                .fill(Theme.Colors.healthBlue.opacity(0.12))
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Text(record.replyEmoji?.emoji ?? "💬")
+                        .font(.system(size: 18))
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isOutgoing ? "我回复给子女" : record.title)
+                    .font(Theme.Typography.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                Text(record.replyEmoji?.displayText ?? record.body)
+                    .font(Theme.Typography.caption1)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                Text(formatDate(record.timestamp))
+                    .font(Theme.Typography.caption2)
+                    .foregroundStyle(Theme.Colors.tertiaryText)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
     }
 
     // MARK: - Data Management
@@ -494,6 +691,8 @@ struct ProfileView: View {
     // MARK: - Care
 
     @State private var careSent = false
+    @State private var lastReplyEmoji: QuickReplyEmoji?
+    @State private var showReplyToast = false
 
     private func sendCare() {
         let title = "❤️ 子女问候"
@@ -506,6 +705,32 @@ struct ProfileView: View {
         careSent = true
         Theme.Haptics.success()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { careSent = false }
+    }
+
+    private func sendQuickReply(_ emoji: QuickReplyEmoji) {
+        guard let user = authStore.currentUser, user.role == .elderly else { return }
+        guard user.isBound else { return }
+        _ = notificationManager.sendQuickReply(emoji, sender: user)
+        Theme.Haptics.success()
+        lastReplyEmoji = emoji
+        showReplyToast = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { showReplyToast = false }
+    }
+
+    private var replyToast: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Text(lastReplyEmoji?.emoji ?? "💬")
+                .font(.system(size: 22))
+            Text("已发送给子女")
+                .font(Theme.Typography.subheadline.weight(.medium))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(
+            Capsule().fill(Theme.Colors.iosDarkGray.opacity(0.92))
+        )
+        .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 4)
     }
 
     // MARK: - Helpers

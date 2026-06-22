@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedGuard 宣传海报</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+SC:wght@300;400;500;600;700;900&display=swap');
+
+  :root {
+    --blue: #3E7BFA;
+    --blue-dark: #1E40AF;
+    --blue-light: #DBEAFE;
+    --green: #48BB78;
+    --amber: #ED8936;
+    --red: #F56565;
+    --bg: #F8FAFC;
+    --card: #FFFFFF;
+    --text: #1A202C;
+    --text-secondary: #64748B;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Sans SC', 'Inter', -apple-system, sans-serif;
+    background: #E2E8F0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+
+  /* Poster — A4 ratio */
+  .poster {
+    width: 800px;
+    min-height: 1132px;
+    background: linear-gradient(170deg, #0F172A 0%, #1E3A5F 40%, #0F172A 100%);
+    border-radius: 24px;
+    overflow: hidden;
+    position: relative;
+    color: white;
+    box-shadow: 0 40px 100px rgba(15, 23, 42, 0.5);
+  }
+
+  /* Decorative bg elements */
+  .poster::before {
+    content: '';
+    position: absolute;
+    top: -200px; right: -200px;
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(62,123,250,0.15) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .poster::after {
+    content: '';
+    position: absolute;
+    bottom: -100px; left: -100px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(72,187,120,0.1) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    padding: 60px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .app-icon {
+    width: 96px; height: 96px;
+    background: linear-gradient(135deg, #3E7BFA 0%, #2563EB 100%);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 16px 40px rgba(62,123,250,0.4);
+    flex-shrink: 0;
+  }
+
+  .app-icon svg { width: 52px; height: 52px; }
+
+  .title-block h1 {
+    font-size: 52px; font-weight: 900; letter-spacing: -1px;
+    background: linear-gradient(135deg, #FFFFFF 0%, #93C5FD 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .title-block .tagline {
+    font-size: 18px; font-weight: 400;
+    color: rgba(255,255,255,0.7);
+    margin-top: 4px;
+    letter-spacing: 2px;
+  }
+
+  /* ── Hero Feature Pills ── */
+  .hero-pills {
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+  .hero-pill {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 100px;
+    padding: 10px 20px;
+    font-size: 14px; font-weight: 500;
+    color: rgba(255,255,255,0.85);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .hero-pill .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .dot.ai { background: #818CF8; box-shadow: 0 0 8px #818CF8; }
+  .dot.security { background: #48BB78; box-shadow: 0 0 8px #48BB78; }
+  .dot.family { background: #ED8936; box-shadow: 0 0 8px #ED8936; }
+  .dot.health { background: #3E7BFA; box-shadow: 0 0 8px #3E7BFA; }
+
+  /* ── Feature Cards ── */
+  .features-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .feature-card {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 28px;
+    transition: transform 0.3s;
+  }
+  .feature-card .icon-circle {
+    width: 48px; height: 48px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+    font-size: 24px;
+  }
+  .feature-card h3 {
+    font-size: 18px; font-weight: 700; margin-bottom: 8px; color: white;
+  }
+  .feature-card p {
+    font-size: 14px; font-weight: 400; color: rgba(255,255,255,0.6);
+    line-height: 1.6;
+  }
+  .icon-ai { background: rgba(129,140,248,0.2); }
+  .icon-security { background: rgba(72,187,120,0.2); }
+  .icon-family { background: rgba(237,137,54,0.2); }
+  .icon-data { background: rgba(62,123,250,0.2); }
+
+  /* ── Phone Mockups Row ── */
+  .phones-row {
+    display: flex; gap: 20px; justify-content: center; align-items: flex-start;
+  }
+  .phone-mock {
+    width: 160px;
+    background: #1C1C1E;
+    border-radius: 24px;
+    padding: 12px 8px 8px;
+    border: 2px solid rgba(255,255,255,0.1);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+  }
+  .phone-notch {
+    width: 60px; height: 6px;
+    background: #2C2C2E; border-radius: 100px;
+    margin: 0 auto 12px;
+  }
+  .phone-screen {
+    background: var(--bg);
+    border-radius: 16px;
+    padding: 14px 10px;
+    min-height: 240px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .phone-screen .mock-header {
+    font-size: 11px; font-weight: 700; color: #1A202C;
+    text-align: center; margin-bottom: 4px;
+  }
+  .mock-card {
+    background: white; border-radius: 10px;
+    padding: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .mock-card .row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; color: #334155;
+  }
+  .mock-badge {
+    font-size: 8px; padding: 2px 8px; border-radius: 100px;
+    font-weight: 600;
+  }
+  .badge-safe { background: #DCFCE7; color: #166534; }
+  .badge-risk { background: #FEF3C7; color: #92400E; }
+  .badge-danger { background: #FEE2E2; color: #991B1B; }
+  .mock-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .mock-dot.green { background: #48BB78; }
+  .mock-dot.amber { background: #ED8936; }
+  .mock-dot.red { background: #F56565; }
+
+  .phone-label {
+    text-align: center; font-size: 12px; font-weight: 600;
+    color: rgba(255,255,255,0.6); margin-top: 10px;
+  }
+
+  /* ── Bottom CTA ── */
+  .bottom-section {
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 32px;
+  }
+  .platform-badge {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.7);
+  }
+  .platform-badge .apple-logo {
+    font-size: 24px;
+  }
+  .qr-placeholder {
+    width: 64px; height: 64px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: rgba(255,255,255,0.4);
+  }
+
+  /* ── Print styles ── */
+  @media print {
+    body { background: white; padding: 0; }
+    .poster { box-shadow: none; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="poster">
+  <div class="content">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="app-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+          <rect x="2" y="4" width="8" height="8" rx="2"/>
+          <rect x="14" y="4" width="8" height="8" rx="2"/>
+          <rect x="2" y="14" width="8" height="8" rx="2"/>
+          <rect x="14" y="14" width="8" height="8" rx="2"/>
+          <circle cx="6" cy="8" r="1" fill="white"/>
+          <circle cx="18" cy="8" r="1" fill="white"/>
+          <circle cx="6" cy="18" r="1" fill="white"/>
+          <circle cx="18" cy="18" r="1" fill="white"/>
+        </svg>
+      </div>
+      <div class="title-block">
+        <h1>MedGuard</h1>
+        <p class="tagline">AI 驱动的家庭用药安全守护系统</p>
+      </div>
+    </div>
+
+    <!-- Hero Pills -->
+    <div class="hero-pills">
+      <div class="hero-pill"><span class="dot ai"></span> 豆包大模型 · AI 药物分析</div>
+      <div class="hero-pill"><span class="dot security"></span> 6位PIN + Face ID 加密</div>
+      <div class="hero-pill"><span class="dot family"></span> 家庭双向关怀通知</div>
+      <div class="hero-pill"><span class="dot health"></span> 用药档案 · 库存预警</div>
+    </div>
+
+    <!-- Feature Cards -->
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="icon-circle icon-ai">🤖</div>
+        <h3>AI 智能识别与分析</h3>
+        <p>拍照自动识别药盒信息 (Doubao-Seed-1.6-vision)；将所有在用药品发给豆包大模型，由 AI 临床药师全面评估药物相互作用风险，输出高/中/低风险等级及详细建议。支持用户自行更换更高端模型。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon-circle icon-security">🔐</div>
+        <h3>6 位 PIN + 面容 ID 安全体系</h3>
+        <p>首次注册强制设置 6 位数字密码 (SHA-256 + 随机盐 + Keychain 硬件加密)。日常 Face ID / Touch ID 无感解锁，敏感设置需 PIN 二次验证。全部数据仅存本地，不上传云端。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon-circle icon-family">👨‍👩‍👧</div>
+        <h3>家庭双向关怀闭环</h3>
+        <p>6 位绑定码连接老人与子女：老人服药/漏服自动推送通知，子女实时查看用药状态。老人可一键发送 👍🙏😊😟 快捷回复，让关怀无延迟。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon-circle icon-data">📊</div>
+        <h3>完整用药档案与时间线</h3>
+        <p>条形码扫描 + 内置 30+ 药品数据库 + 百度 API 查询。按时间线分组展示用药历史，自动库存预警（低于阈值提示补充），支持 JSON/CSV 导出。</p>
+      </div>
+    </div>
+
+    <!-- Phone Mockups -->
+    <div class="phones-row">
+      <!-- Screen 1: AI Risk -->
+      <div>
+        <div class="phone-mock">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="mock-header">风险分析</div>
+            <div class="mock-card">
+              <div class="row"><span class="mock-dot red"></span><b>高风险</b></div>
+              <div style="font-size:9px;color:#64748B;margin-top:4px;">阿司匹林 + 华法林</div>
+              <div style="font-size:9px;color:#991B1B;margin-top:2px;">⚠ 出血风险显著增加</div>
+            </div>
+            <div class="mock-card">
+              <div class="row"><span class="mock-dot amber"></span><b>中风险</b></div>
+              <div style="font-size:9px;color:#64748B;margin-top:4px;">二甲双胍 + 布洛芬</div>
+              <div style="font-size:9px;color:#92400E;margin-top:2px;">⚡ 可能影响肾功能</div>
+            </div>
+            <div class="mock-card" style="background:#F0FDF4;border:1px solid #DCFCE7;">
+              <div class="row"><span class="mock-dot green"></span><b style="color:#166534;">低风险</b></div>
+              <div style="font-size:9px;color:#166534;margin-top:4px;">维生素D₃ + 钙片</div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-label">AI 风险分析</div>
+      </div>
+
+      <!-- Screen 2: Home -->
+      <div>
+        <div class="phone-mock">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="mock-header">今日用药</div>
+            <div class="mock-card" style="background: linear-gradient(135deg,#EBF5FF,#DBEAFE);">
+              <div style="font-size:10px;color:#1E40AF;font-weight:600;">📋 今日用药状态</div>
+              <div style="font-size:24px;font-weight:900;color:#1E40AF;">8/8</div>
+              <span class="mock-badge badge-safe">✓ 全部完成</span>
+            </div>
+            <div class="mock-card">
+              <div class="row">💊 <b>阿司匹林</b> <span style="margin-left:auto;font-size:9px;">08:00</span></div>
+              <span class="mock-badge badge-safe" style="font-size:7px;">已服用</span>
+            </div>
+            <div class="mock-card">
+              <div class="row">💊 <b>二甲双胍</b> <span style="margin-left:auto;font-size:9px;">12:00</span></div>
+              <span class="mock-badge badge-risk" style="font-size:7px;">待服用</span>
+            </div>
+          </div>
+        </div>
+        <div class="phone-label">首页概览</div>
+      </div>
+
+      <!-- Screen 3: PIN -->
+      <div>
+        <div class="phone-mock">
+          <div class="phone-notch"></div>
+          <div class="phone-screen" style="align-items:center;justify-content:center;">
+            <div style="font-size:28px;margin-bottom:12px;">🔒</div>
+            <div class="mock-header">输入密码</div>
+            <div style="display:flex;gap:10px;margin:16px 0;">
+              <div style="width:12px;height:12px;border-radius:50%;background:#3E7BFA;"></div>
+              <div style="width:12px;height:12px;border-radius:50%;background:#3E7BFA;"></div>
+              <div style="width:12px;height:12px;border-radius:50%;background:#3E7BFA;"></div>
+              <div style="width:12px;height:12px;border-radius:50%;border:2px solid #CBD5E1;"></div>
+              <div style="width:12px;height:12px;border-radius:50%;border:2px solid #CBD5E1;"></div>
+              <div style="width:12px;height:12px;border-radius:50%;border:2px solid #CBD5E1;"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;width:100%;">
+              <div style="text-align:center;padding:10px;font-size:14px;font-weight:600;color:#1A202C;">1</div>
+              <div style="text-align:center;padding:10px;font-size:14px;font-weight:600;color:#1A202C;">2</div>
+              <div style="text-align:center;padding:10px;font-size:14px;font-weight:600;color:#1A202C;">3</div>
+              <div style="text-align:center;padding:10px;font-size:14px;font-weight:600;color:#1A202C;">4</div>
+              <div style="text-align:center;padding:10px;font-size:14px;font-weight:600;color:#1A202C;">5</div>
+              <div style="text-align:center;padding:10px;font-size:14px;font-weight:600;color:#1A202C;">6</div>
+              <div></div>
+              <div style="text-align:center;padding:10px;font-size:14px;font-weight:600;color:#1A202C;">0</div>
+              <div style="text-align:center;padding:10px;font-size:12px;color:#94A3B8;">⌫</div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-label">PIN 安全</div>
+      </div>
+
+      <!-- Screen 4: Binding -->
+      <div>
+        <div class="phone-mock">
+          <div class="phone-notch"></div>
+          <div class="phone-screen" style="align-items:center;text-align:center;">
+            <div style="font-size:32px;margin-bottom:8px;">👨‍👩‍👧</div>
+            <div class="mock-header">账号绑定</div>
+            <div style="font-size:9px;color:#64748B;margin:8px 0;">将以下绑定码发给子女</div>
+            <div style="background:#F1F5F9;border-radius:12px;padding:12px;width:100%;">
+              <div style="font-size:28px;font-weight:900;letter-spacing:6px;color:#1E40AF;">382 951</div>
+            </div>
+            <div style="font-size:8px;color:#94A3B8;margin-top:6px;">⏱ 有效期: 4分32秒</div>
+            <div style="margin-top:8px;background:#3E7BFA;color:white;border-radius:8px;padding:6px;font-size:10px;width:100%;">📋 复制绑定码</div>
+          </div>
+        </div>
+        <div class="phone-label">家庭绑定</div>
+      </div>
+    </div>
+
+    <!-- Bottom -->
+    <div class="bottom-section">
+      <div class="platform-badge">
+        <span class="apple-logo"></span>
+        <span>iOS 16+ · SwiftUI · 豆包 AI</span>
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.4);">
+        用药安全 · 家庭守护
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
